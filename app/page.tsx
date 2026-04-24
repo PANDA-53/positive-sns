@@ -17,7 +17,7 @@ export default async function Index() {
   return (
     <main className="max-w-xl mx-auto p-4 md:p-6 min-h-screen bg-gray-50 text-black">
       <header className="flex justify-between items-center mb-8 gap-4">
-        <h1 className="text-xl md:text-2xl font-bold text-green-700">ポジティブSNS 🌿</h1>
+        <h1 className="text-xl md:text-2xl font-bold text-green-700">POSITIVE SNS</h1>
         {user ? (
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-bold text-gray-400 bg-white px-3 py-1 rounded-full border border-gray-100 hidden sm:inline-block">
