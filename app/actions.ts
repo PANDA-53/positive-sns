@@ -4,7 +4,6 @@ import { createClient } from '../utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
-// ログイン
 export async function login(formData: FormData) {
   const supabase = await createClient()
   const email = formData.get('email') as string
@@ -15,7 +14,6 @@ export async function login(formData: FormData) {
   redirect('/')
 }
 
-// ログアウト
 export async function logout() {
   const supabase = await createClient()
   await supabase.auth.signOut()
@@ -23,7 +21,7 @@ export async function logout() {
   redirect('/login')
 }
 
-// ★ プロフィール画像のアップロード
+// プロフィール画像のアップロード処理
 export async function uploadAvatar(formData: FormData) {
   const supabase = await createClient()
   const file = formData.get('file') as File
@@ -32,17 +30,21 @@ export async function uploadAvatar(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  const fileName = `${user.id}.png` // 一意のファイル名
+  const fileName = `${user.id}.png`
   
-  const { error } = await supabase.storage
+  // Storageへアップロード
+  const { error: uploadError } = await supabase.storage
     .from('avatars')
     .upload(fileName, file, { upsert: true })
 
-  if (error) console.error('Upload Error:', error.message)
+  if (uploadError) {
+    console.error('Upload Error:', uploadError.message)
+    return
+  }
+
   revalidatePath('/')
 }
 
-// ★ 投稿 (avatar_url を含めて保存)
 export async function createPost(formData: FormData) {
   const supabase = await createClient()
   const content = formData.get('content') as string
@@ -53,6 +55,7 @@ export async function createPost(formData: FormData) {
     ? `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${user.id}.png`
     : null
 
+  // 投稿時にアバターURLも保存
   await supabase.from('posts').insert({ 
     content, 
     user_name: 'Gimax',
@@ -61,17 +64,11 @@ export async function createPost(formData: FormData) {
   revalidatePath('/')
 }
 
-// コメント
 export async function createComment(formData: FormData) {
   const supabase = await createClient()
   const content = formData.get('content') as string
   const postId = formData.get('postId') as string
   if (!content || content.trim() === '') return
-
-  await supabase.from('comments').insert({ 
-    content, 
-    post_id: Number(postId), 
-    user_name: 'Gimax' 
-  })
+  await supabase.from('comments').insert({ content, post_id: Number(postId), user_name: 'Gimax' })
   revalidatePath('/')
 }

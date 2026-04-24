@@ -3,58 +3,54 @@ import { createPost, createComment, logout, uploadAvatar } from './actions'
 
 export default async function Index() {
   const supabase = await createClient()
-
-  // avatar_url も含めて取得
   const { data: posts } = await supabase
     .from('posts')
-    .select(`id, content, created_at, user_name, avatar_url, comments(id, content, user_name)`)
+    .select('id, content, created_at, user_name, avatar_url, comments(id, content, user_name)')
     .order('created_at', { ascending: false })
 
   const { data: { user } } = await supabase.auth.getUser()
 
   return (
     <main className="max-w-xl mx-auto p-4 md:p-6 min-h-screen bg-gray-50 text-black">
-      <header className="flex flex-col gap-4 mb-8 bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center">
-          <h1 className="text-xl font-bold text-green-700">POSITIVE SNS</h1>
-          {user && (
-            <form action={logout}>
-              <button className="text-[10px] bg-red-50 text-red-500 px-3 py-1 rounded-full font-bold">ログアウト</button>
-            </form>
-          )}
-        </div>
+      <header className="flex justify-between items-center mb-8 bg-white p-5 rounded-3xl shadow-sm border border-gray-100">
+        <h1 className="text-xl font-bold text-green-700">POSITIVE SNS</h1>
+        {user && (
+          <form action={logout}>
+            <button className="text-[10px] bg-red-50 text-red-500 px-3 py-1 rounded-full font-bold">ログアウト</button>
+          </form>
+        )}
+      </header>
 
-        {user ? (
-          <div className="flex items-center gap-4 p-3 bg-green-50/30 rounded-2xl border border-green-50">
-            {/* 現在のアイコン表示 */}
-            <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-white shadow-sm bg-gray-200 shrink-0">
+      {user ? (
+        <section className="mb-10 space-y-4">
+          {/* ★ プロフィール画像アップロード場所 ★ */}
+          <div className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center gap-4">
+            <div className="w-14 h-14 rounded-full overflow-hidden border-2 border-green-100 bg-gray-100 shrink-0">
               <img 
                 src={`${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avatars/${user.id}.png?t=${Date.now()}`} 
                 className="w-full h-full object-cover" 
                 onError={(e) => (e.currentTarget.src = "https://www.gravatar.com/avatar/?d=mp")}
               />
             </div>
-            {/* ★ 画像アップロードフォーム */}
             <form action={uploadAvatar} className="flex flex-col gap-2">
-              <p className="text-[10px] font-bold text-gray-500">{user.email}</p>
+              <p className="text-[10px] font-bold text-gray-500">{user.email} のアイコン変更</p>
               <div className="flex items-center gap-2">
-                <input type="file" name="file" accept="image/*" className="text-[10px] text-gray-400 w-32 cursor-pointer" required />
-                <button type="submit" className="bg-green-600 text-white text-[9px] px-3 py-1 rounded-full font-bold shadow-sm hover:bg-green-700">
-                  画像を更新
-                </button>
+                <input type="file" name="file" accept="image/*" className="text-[10px] text-gray-400 w-32" required />
+                <button type="submit" className="bg-green-600 text-white text-[9px] px-3 py-1 rounded-full font-bold shadow-sm">更新</button>
               </div>
             </form>
           </div>
-        ) : (
-          <a href="/login" className="text-center bg-green-500 text-white py-3 rounded-2xl font-bold">ログインして参加</a>
-        )}
-      </header>
 
-      {user && (
-        <form action={createPost} className="mb-10 bg-white p-5 rounded-3xl shadow-md border border-green-50">
-          <textarea name="content" placeholder="最近あった、いいことは？" className="w-full p-4 border-none bg-gray-50 rounded-2xl text-black resize-none outline-none focus:ring-2 focus:ring-green-400" rows={3} required />
-          <button type="submit" className="mt-3 w-full bg-green-500 text-white font-bold py-3.5 rounded-2xl shadow-lg hover:bg-green-600 transition-all active:scale-95">投稿する</button>
-        </form>
+          {/* 投稿フォーム */}
+          <form action={createPost} className="bg-white p-5 rounded-3xl shadow-md border border-green-50">
+            <textarea name="content" placeholder="最近あった、いいことは？" className="w-full p-4 border-none bg-gray-50 rounded-2xl text-black resize-none outline-none focus:ring-2 focus:ring-green-400" rows={3} required />
+            <button type="submit" className="mt-3 w-full bg-green-500 text-white font-bold py-3.5 rounded-2xl shadow-lg">投稿する</button>
+          </form>
+        </section>
+      ) : (
+        <div className="mb-10 p-8 text-center bg-white rounded-3xl border border-gray-100">
+          <a href="/login" className="inline-block bg-green-500 text-white px-8 py-3 rounded-full font-bold shadow-lg">ログインして参加</a>
+        </div>
       )}
 
       {/* タイムライン */}
@@ -63,13 +59,12 @@ export default async function Index() {
           <div key={post.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
             <div className="p-5">
               <div className="flex items-center gap-2 mb-4">
-                {/* 投稿者のアバター表示 */}
                 <img src={post.avatar_url || "https://www.gravatar.com/avatar/?d=mp"} className="w-7 h-7 rounded-full object-cover border" />
                 <span className="text-xs font-bold text-green-600">{post.user_name}</span>
+                <span className="text-[10px] text-gray-300 ml-auto">{new Date(post.created_at).toLocaleDateString('ja-JP')}</span>
               </div>
-              <p className="text-base text-gray-800 leading-relaxed font-medium">{post.content}</p>
+              <p className="text-base text-gray-800 leading-relaxed">{post.content}</p>
             </div>
-            {/* コメントセクション */}
             <div className="bg-gray-50/50 p-4 border-t border-gray-50">
               <div className="space-y-2 mb-4">
                 {post.comments?.map((c: any) => (
