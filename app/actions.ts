@@ -25,3 +25,26 @@ export async function createPost(formData: FormData) {
 
   revalidatePath('/')
 }
+// app/actions.ts に追記
+export async function createComment(formData: FormData) {
+  const supabase = await createClient()
+  const content = formData.get('content') as string
+  const postId = formData.get('postId') as string
+
+  if (!content || content.trim() === '') return
+
+  const { error } = await supabase
+    .from('comments')
+    .insert({ 
+      content, 
+      post_id: postId,
+      user_name: 'Gimax' 
+    })
+
+  if (error) {
+    console.error('コメントエラー:', error.message)
+    return
+  }
+
+  revalidatePath('/')
+}

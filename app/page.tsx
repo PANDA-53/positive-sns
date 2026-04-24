@@ -1,13 +1,24 @@
 import { createClient } from '../utils/supabase/server'
-import { createPost } from './actions'
+import { createPost, createComment } from './actions'
 
 export default async function Index() {
   const supabase = await createClient()
 
-  // 1. 投稿データを取得
+  // 1. 投稿データと、その投稿に紐づくコメントを一緒に取得
   const { data: posts, error } = await supabase
     .from('posts')
-    .select('id, content, created_at, user_name')
+    .select(`
+      id, 
+      content, 
+      created_at, 
+      user_name,
+      comments (
+        id,
+        content,
+        user_name,
+        created_at
+      )
+    `)
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -18,8 +29,7 @@ export default async function Index() {
   const { data: { user } } = await supabase.auth.getUser()
 
   return (
-    /* スマホでは左右に少し隙間(px-4)、PCではゆったり(md:p-6) */
-    <main className="max-w-xl mx-auto p-4 md:p-6 min-h-screen bg-gray-50">
+    <main className="max-w-xl mx-auto p-4 md:p-6 min-h-screen bg-gray-50 text-black">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-10 gap-3">
         <h1 className="text-xl md:text-2xl font-bold text-green-700 flex items-center gap-2">
           ポジティブSNS 🌿
@@ -32,13 +42,12 @@ export default async function Index() {
         )}
       </header>
 
-      {/* 投稿フォーム：スマホで入力しやすいよう調整 */}
+      {/* 投稿フォーム */}
       {user ? (
         <form action={createPost} className="mb-8 md:mb-10 bg-white p-4 md:p-5 rounded-2xl shadow-md border border-green-50">
           <textarea
             name="content"
             placeholder="最近あった、ちょっといいことは？"
-            /* text-base以上にすることでiPhoneの自動ズームを防止 */
             className="w-full p-3 md:p-4 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-400 text-black text-base placeholder-gray-400 resize-none bg-gray-50"
             rows={3}
             required
@@ -52,26 +61,64 @@ export default async function Index() {
         </form>
       ) : (
         <div className="mb-8 p-6 bg-orange-50 rounded-2xl text-center border border-orange-100">
-          <p className="text-orange-700 font-medium text-sm">投稿にはログインが必要です</p>
+          <p className="text-orange-700 font-medium text-sm">投稿するにはログインが必要です</p>
           <a href="/login" className="text-xs underline text-orange-600 mt-2 inline-block">ログインページへ</a>
         </div>
       )}
 
-      {/* 投稿一覧（フィード）：スマホではカードの間隔を少し詰める */}
-      <div className="space-y-4 md:space-y-6">
+      {/* 投稿一覧 */}
+      <div className="space-y-6 md:space-y-8">
         {(!posts || posts.length === 0) && (
-          <p className="text-center text-gray-400 py-10 text-sm">まだ投稿がありません。最初のポジティブを書きましょう！</p>
+          <p className="text-center text-gray-400 py-10 text-sm">まだ投稿がありません。</p>
         )}
         {posts?.map((post: any) => (
-          <div key={post.id} className="bg-white p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 hover:border-green-200 transition-colors">
-            <p className="text-base md:text-lg text-gray-800 mb-4 leading-relaxed">{post.content}</p>
-            <div className="flex justify-between items-center text-[11px] md:text-xs border-t border-gray-50 pt-3">
-              <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded-md">
-                👤 {post.user_name || 'Gimax'} 
-              </span>
-              <span className="text-gray-400">
-                {new Date(post.created_at).toLocaleDateString('ja-JP')}
-              </span>
+          <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {/* メイン投稿内容 */}
+            <div className="p-4 md:p-5 pb-2">
+              <p className="text-base md:text-lg text-gray-800 mb-4 leading-relaxed">{post.content}</p>
+              <div className="flex justify-between items-center text-[11px] md:text-xs text-gray-400 pb-3 border-b border-gray-50">
+                <span className="font-bold text-green-600 bg-green-50 px-2 py-1 rounded-md">
+                  👤 {post.user_name || 'Gimax'} 
+                </span>
+                <span>{new Date(post.created_at).toLocaleDateString('ja-JP')}</span>
+              </div>
+            </div>
+
+            {/* コメントセクション */}
+            <div className="bg-gray-50/80 p-4">
+              <div className="space-y-3 mb-4">
+                {post.comments && post.comments.length > 0 ? (
+                  post.comments.map((comment: any) => (
+                    <div key={comment.id} className="text-sm bg-white p-2 rounded-lg shadow-sm border border-gray-100">
+                      <p className="text-gray-700">
+                        <span className="font-bold text-green-700 mr-1">{comment.user_name}:</span>
+                        {comment.content}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-1">
+                        {new Date(comment.created_at).toLocaleDateString('ja-JP')}
+                      </p>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[11px] text-gray-400 italic">まだコメントはありません</p>
+                )}
+              </div>
+
+              {/* コメント入力欄 */}
+              {user && (
+                <form action={createComment} className="flex gap-2">
+                  <input type="hidden" name="postId" value={post.id} />
+                  <input
+                    name="content"
+                    placeholder="コメント..."
+                    className="flex-1 text-sm p-2 px-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"
+                    required
+                  />
+                  <button className="bg-green-500 text-white px-4 py-1 rounded-full text-xs font-bold hover:bg-green-600 transition-colors shadow-sm">
+                    送信
+                  </button>
+                </form>
+              )}
             </div>
           </div>
         ))}
