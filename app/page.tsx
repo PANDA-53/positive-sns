@@ -61,19 +61,15 @@ export default async function Index() {
         </form>
       ) : (
         <div className="mb-8 p-6 bg-orange-50 rounded-2xl text-center border border-orange-100">
-          <p className="text-orange-700 font-medium text-sm">投稿するにはログインが必要です</p>
+          <p className="text-orange-700 font-medium text-sm">投稿にはログインが必要です</p>
           <a href="/login" className="text-xs underline text-orange-600 mt-2 inline-block">ログインページへ</a>
         </div>
       )}
 
       {/* 投稿一覧 */}
       <div className="space-y-6 md:space-y-8">
-        {(!posts || posts.length === 0) && (
-          <p className="text-center text-gray-400 py-10 text-sm">まだ投稿がありません。</p>
-        )}
         {posts?.map((post: any) => (
           <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            {/* メイン投稿内容 */}
             <div className="p-4 md:p-5 pb-2">
               <p className="text-base md:text-lg text-gray-800 mb-4 leading-relaxed">{post.content}</p>
               <div className="flex justify-between items-center text-[11px] md:text-xs text-gray-400 pb-3 border-b border-gray-50">
@@ -87,34 +83,26 @@ export default async function Index() {
             {/* コメントセクション */}
             <div className="bg-gray-50/80 p-4">
               <div className="space-y-3 mb-4">
-                {post.comments && post.comments.length > 0 ? (
-                  post.comments.map((comment: any) => (
-                    <div key={comment.id} className="text-sm bg-white p-2 rounded-lg shadow-sm border border-gray-100">
-                      <p className="text-gray-700">
-                        <span className="font-bold text-green-700 mr-1">{comment.user_name}:</span>
-                        {comment.content}
-                      </p>
-                      <p className="text-[10px] text-gray-400 mt-1">
-                        {new Date(comment.created_at).toLocaleDateString('ja-JP')}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-[11px] text-gray-400 italic">まだコメントはありません</p>
-                )}
+                {post.comments?.map((comment: any) => (
+                  <div key={comment.id} className="text-sm bg-white p-2 rounded-lg shadow-sm border border-gray-100">
+                    <p className="text-gray-700">
+                      <span className="font-bold text-green-700 mr-1">{comment.user_name}:</span>
+                      {comment.content}
+                    </p>
+                  </div>
+                ))}
               </div>
 
-              {/* コメント入力欄 */}
               {user && (
                 <form action={createComment} className="flex gap-2">
                   <input type="hidden" name="postId" value={post.id} />
                   <input
                     name="content"
                     placeholder="コメント..."
-                    className="flex-1 text-sm p-2 px-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-green-300 bg-white"
+                    className="flex-1 text-sm p-2 px-3 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-green-300 bg-white text-black"
                     required
                   />
-                  <button className="bg-green-500 text-white px-4 py-1 rounded-full text-xs font-bold hover:bg-green-600 transition-colors shadow-sm">
+                  <button className="bg-green-500 text-white px-4 py-1 rounded-full text-xs font-bold hover:bg-green-600 shadow-sm">
                     送信
                   </button>
                 </form>

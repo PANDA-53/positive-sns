@@ -3,6 +3,7 @@
 import { createClient } from '../utils/supabase/server'
 import { revalidatePath } from 'next/cache'
 
+// 投稿（Post）を作成する関数
 export async function createPost(formData: FormData) {
   const supabase = await createClient()
   const content = formData.get('content') as string
@@ -15,7 +16,7 @@ export async function createPost(formData: FormData) {
     .from('posts')
     .insert({ 
       content,
-      user_name: 'Gimax' // 今後のステップで profiles から取得するように拡張可能
+      user_name: 'Gimax' // profilesテーブルを本格運用するまでは固定値
     })
 
   if (error) {
@@ -25,7 +26,8 @@ export async function createPost(formData: FormData) {
 
   revalidatePath('/')
 }
-// app/actions.ts に追記
+
+// コメント（Comment）を作成する関数
 export async function createComment(formData: FormData) {
   const supabase = await createClient()
   const content = formData.get('content') as string
