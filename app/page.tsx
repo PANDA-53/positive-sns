@@ -118,7 +118,7 @@ export default async function Index(props: {
           <div className="bg-amber-50 border border-amber-200 text-amber-700 p-5 rounded-[2rem] mb-8 text-sm font-bold text-center shadow-sm animate-pulse">
             私はあなたの健康を守ります。
             <br />
-            <span className="text-[10px] text-amber-600 opacity-70">その発言は不快にする恐れがあります。</span>
+            <span className="text-[10px] text-amber-600 opacity-70">その発言は受け取る人も見た人をも不快にする恐れがあります。</span>
           </div>
         )}
 
