@@ -193,3 +193,46 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
   // 画面を更新
   revalidatePath('/');
 }
+// --- 友達機能用のアクション ---
+
+// 1. 友達申請を送る
+export async function sendFriendRequest(friendId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { error } = await supabase
+    .from('friendships')
+    .insert({ user_id: user.id, friend_id: friendId, status: 'pending' });
+
+  if (error) console.error(error);
+}
+
+// 2. 友達申請を承認する
+export async function acceptFriendRequest(senderId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { error } = await supabase
+    .from('friendships')
+    .update({ status: 'accepted' })
+    .eq('user_id', senderId)
+    .eq('friend_id', user.id);
+
+  if (error) console.error(error);
+}
+
+// 3. 友達申請を削除/拒否する
+export async function deleteFriendship(targetUserId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  const { error } = await supabase
+    .from('friendships')
+    .delete()
+    .or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
+
+  if (error) console.error(error);
+}
