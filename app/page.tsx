@@ -58,7 +58,7 @@ export default async function Index(props: {
             <span className="text-xl block mb-2"></span>
             私はあなたの健康を守ります。その発言が本当に貴方の心を健康にしますか？
             <br />
-            <span className="text-[10px] text-amber-600 opacity-70">判定：不適切な可能性がある内容</span>
+            <span className="text-[10px] text-amber-600 opacity-70">その発言は受け取る人、見る人を不快にする恐れがあります。</span>
           </div>
         )}
 
