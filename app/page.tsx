@@ -39,7 +39,8 @@ export default async function Index() {
           <h1 className="text-lg md:text-xl font-bold text-black tracking-tight italic">Timeline.</h1>
           {user ? (
             <div className="flex items-center gap-4">
-              {/* プロフィール編集ページなどへの導線を将来的に作るならここ */}
+              {/* 設定ページへのリンクを追加 */}
+              <a href="/profile" className="text-[10px] md:text-xs text-gray-500 hover:text-black font-bold transition-colors">設定</a>
               <form action={logout}>
                 <button className="text-[10px] md:text-xs bg-white border border-gray-200 text-gray-500 px-4 py-2 rounded-full font-bold hover:bg-gray-50 transition-colors">ログアウト</button>
               </form>
@@ -52,24 +53,14 @@ export default async function Index() {
 
       <div className="max-w-2xl mx-auto px-4">
         {!user ? (
-          /* 未ログイン時 */
           <div className="flex flex-col items-center justify-center pt-20 text-center space-y-8 animate-in fade-in duration-700">
             <div className="space-y-4">
               <h2 className="text-4xl font-black tracking-tighter text-black">Share your positive moments.</h2>
-              <p className="text-gray-500 text-sm md:text-base max-w-sm mx-auto">
-                日常の小さな幸せをシェアしましょう。<br />
-                タイムラインを見るにはログインが必要です。
-              </p>
+              <p className="text-gray-500 text-sm md:text-base max-w-sm mx-auto">日常の小さな幸せをシェアしましょう。</p>
             </div>
-            <a 
-              href="/login" 
-              className="bg-black text-white px-10 py-4 rounded-2xl font-bold shadow-2xl shadow-gray-400 hover:bg-gray-800 transition-all active:scale-95"
-            >
-              はじめる
-            </a>
+            <a href="/login" className="bg-black text-white px-10 py-4 rounded-2xl font-bold shadow-2xl shadow-gray-400 hover:bg-gray-800 transition-all active:scale-95">はじめる</a>
           </div>
         ) : (
-          /* ログイン時 */
           <div className="space-y-8">
             <section className="animate-in fade-in slide-in-from-top-4 duration-500">
               <form action={createPost} className="bg-white p-4 md:p-6 rounded-[2rem] shadow-xl shadow-gray-200 border border-gray-100">
@@ -95,17 +86,13 @@ export default async function Index() {
                         <img src={defaultAvatar} className="w-full h-full object-cover" alt="avatar" />
                       </div>
                       <div className="flex flex-col">
-                        {/* ここでプロフィールの名前を優先表示 */}
                         <span className="text-sm md:text-base font-bold text-gray-900 leading-none">
                           {post.profiles?.full_name || post.user_name || '匿名'}
                         </span>
                         <span className="text-[10px] text-gray-400 mt-1">{new Date(post.created_at).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    
-                    <p className="text-base md:text-lg text-gray-800 leading-relaxed font-medium mb-6 px-1">
-                      {post.content}
-                    </p>
+                    <p className="text-base md:text-lg text-gray-800 leading-relaxed font-medium mb-6 px-1">{post.content}</p>
 
                     {/* 返信一覧 */}
                     {replies.some(r => r.parent_id === post.id) && (
@@ -126,9 +113,7 @@ export default async function Index() {
                       <input type="hidden" name="parentId" value={post.id} />
                       <input name="content" placeholder="返信する..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none" required />
                       <button type="submit" className="bg-gray-800 text-white w-8 h-8 rounded-full flex items-center justify-center hover:bg-black transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                          <path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925L10.79 10l-7.097 1.836-1.414 4.925a.75.75 0 00.826.95 44.82 44.82 0 0014.174-7.443.75.75 0 000-1.216 44.82 44.82 0 00-14.174-7.443z" />
-                        </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925L10.79 10l-7.097 1.836-1.414 4.925a.75.75 0 00.826.95 44.82 44.82 0 0014.174-7.443.75.75 0 000-1.216 44.82 44.82 0 00-14.174-7.443z" /></svg>
                       </button>
                     </form>
                   </div>
