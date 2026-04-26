@@ -83,8 +83,10 @@ export async function createPost(formData: FormData) {
   const isToxic = await checkContentWithCustomRules(content);
   if (isToxic) return redirect('/?error=toxic-content');
 
+  // 成功時
   await supabase.from('posts').insert({ content, user_id: user.id });
   revalidatePath('/');
+  redirect('/'); // URLの?error=...を消すためにトップへリダイレクト
 }
 
 export async function createReply(formData: FormData) {
@@ -97,8 +99,10 @@ export async function createReply(formData: FormData) {
   const isToxic = await checkContentWithCustomRules(content);
   if (isToxic) return redirect('/?error=toxic-content');
 
+  // 成功時
   await supabase.from('posts').insert({ content, parent_id: parentId, user_id: user.id });
   revalidatePath('/');
+  redirect('/'); // URLの?error=...を消すためにトップへリダイレクト
 }
 
 // --- プロフィール更新 ---
@@ -144,8 +148,7 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
   revalidatePath('/');
 }
 
-// --- 友達機能（revalidatePathを追加！） ---
-
+// --- 友達機能 ---
 export async function sendFriendRequest(friendId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -169,7 +172,7 @@ export async function acceptFriendRequest(senderId: string) {
   if (error) {
     console.error(error);
   } else {
-    revalidatePath('/'); // これで承認リストが消え、友達状態が反映されます
+    revalidatePath('/'); 
   }
 }
 

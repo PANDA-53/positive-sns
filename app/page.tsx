@@ -21,16 +21,13 @@ export default async function Index(props: {
   let mainPosts: any[] = []
   let replies: any[] = []
   let pendingRequests: any[] = [] 
+  let acceptedFriends: any[] = [] 
   
   if (user) {
-    // 1. 全ての投稿と、その投稿主のプロフィールを取得
+    // 1. 投稿データを取得
     const { data: posts } = await supabase
       .from('posts')
-      .select(`
-        *, 
-        profiles!posts_user_id_fkey (id, full_name, avatar_url),
-        reactions (type, user_id)
-      `)
+      .select(`*, reactions (type, user_id)`)
       .order('created_at', { ascending: false })
 
     // 2. 友達関係の「生データ」を取得
@@ -39,32 +36,44 @@ export default async function Index(props: {
       .select('*')
       .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
 
-    // 3. 自分宛の承認待ち申請を抽出
+    // 3. 全ての関連プロフィールを取得（投稿主 + 友達候補）
+    const postUserIds = posts?.map(p => p.user_id) || [];
+    const allFriendUserIds = friendshipsRaw?.map(f => f.user_id === user.id ? f.friend_id : f.user_id) || [];
+    const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds]));
+    
+    const { data: allProfiles } = await supabase
+      .from('profiles')
+      .select('id, full_name, avatar_url')
+      .in('id', allRelevantUserIds);
+
+    // 4. 承認待ちリストの重複排除 (自分宛のpendingのみ)
     const myPendingRaw = friendshipsRaw?.filter(f => 
       String(f.friend_id) === String(user.id) && f.status === 'pending'
     ) || [];
 
-    // 承認待ちユーザーのプロフィールを別途取得して結合
-    if (myPendingRaw.length > 0) {
-      const senderIds = myPendingRaw.map(f => f.user_id);
-      const { data: senderProfiles } = await supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .in('id', senderIds);
+    const pendingUserIds = new Set(myPendingRaw.map(f => f.user_id));
+    pendingRequests = Array.from(pendingUserIds).map(id => ({
+      user_id: id,
+      sender_profile: allProfiles?.find(p => p.id === id)
+    })).filter(req => req.sender_profile);
 
-      pendingRequests = myPendingRaw.map(req => ({
-        ...req,
-        sender_profile: senderProfiles?.find(p => p.id === req.user_id)
-      }));
-    }
+    // 5. 承認済み友達リストの重複排除
+    const myAcceptedRaw = friendshipsRaw?.filter(f => f.status === 'accepted') || [];
+    const uniqueFriendIds = new Set(
+      myAcceptedRaw.map(f => (String(f.user_id) === String(user.id) ? f.friend_id : f.user_id))
+    );
 
+    acceptedFriends = Array.from(uniqueFriendIds).map(id => {
+      return allProfiles?.find(p => p.id === id);
+    }).filter(Boolean);
+
+    // 6. 投稿データの整形
     if (posts) {
       const formattedPosts = posts.map(post => {
         const awesomeCount = post.reactions?.filter((r: any) => r.type === 'awesome').length || 0;
         const hugCount = post.reactions?.filter((r: any) => r.type === 'hug').length || 0;
         const myReaction = post.reactions?.find((r: any) => r.user_id === user.id)?.type || null;
 
-        // 友達状態の判定
         let friendStatus: 'none' | 'pending' | 'accepted' | 'me' = 'none';
         if (post.user_id === user.id) {
           friendStatus = 'me';
@@ -73,26 +82,15 @@ export default async function Index(props: {
             (String(f.user_id) === String(user.id) && String(f.friend_id) === String(post.user_id)) || 
             (String(f.user_id) === String(post.user_id) && String(f.friend_id) === String(user.id))
           );
-          if (relation) {
-            friendStatus = relation.status as any;
-          }
+          if (relation) friendStatus = relation.status as any;
         }
 
-        // プロフィール情報。リレーション名が profiles!posts_user_id_fkey になる場合があるため調整
-        const authorProfile = post.profiles || (post as any).profiles_posts_user_id_fkey;
-
-        return { 
-          ...post, 
-          authorProfile,
-          awesomeCount, 
-          hugCount, 
-          myReaction, 
-          friendStatus 
-        };
+        const authorProfile = allProfiles?.find(p => p.id === post.user_id);
+        return { ...post, authorProfile, awesomeCount, hugCount, myReaction, friendStatus };
       });
 
-      mainPosts = formattedPosts.filter(p => !p.parent_id)
-      replies = formattedPosts.filter(p => p.parent_id)
+      mainPosts = formattedPosts.filter(p => !p.parent_id);
+      replies = formattedPosts.filter(p => p.parent_id);
     }
   }
   
@@ -114,63 +112,67 @@ export default async function Index(props: {
 
       <div className="max-w-2xl mx-auto px-4">
         
+        {/* AI判定の注意文 */}
         {isToxic && (
           <div className="bg-amber-50 border border-amber-200 text-amber-700 p-5 rounded-[2rem] mb-8 text-sm font-bold text-center shadow-sm animate-pulse">
             私はあなたの健康を守ります。
             <br />
-            <span className="text-[10px] text-amber-600 opacity-70">その発言は受け取る人も見た人をも不快にする恐れがあります。</span>
+            <span className="text-[10px] text-amber-600 opacity-70">その発言は誰かを不快にする恐れがあります。</span>
           </div>
         )}
 
-        {!user ? (
-          <div className="flex flex-col items-center justify-center pt-20 text-center space-y-8">
-            <h2 className="text-4xl font-black tracking-tighter">Share your positive moments.</h2>
-            <a href="/login" className="bg-black text-white px-10 py-4 rounded-2xl font-bold shadow-2xl">はじめる</a>
-          </div>
-        ) : (
+        {user && (
           <div className="space-y-8">
             
-            {/* 1. 承認待ちリスト */}
+            {/* 友達一覧 */}
+            <section className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Friends</h3>
+              <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
+                {acceptedFriends.length > 0 ? (
+                  acceptedFriends.map((friend) => (
+                    <div key={friend.id} className="flex flex-col items-center gap-1 shrink-0 w-16">
+                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-md">
+                        <img src={friend.avatar_url || defaultAvatar} className="w-full h-full object-cover" />
+                      </div>
+                      <span className="text-[10px] font-bold text-gray-600 truncate w-full text-center">{friend.full_name}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-[10px] text-gray-400 px-2 italic">まだ友達がいません</p>
+                )}
+              </div>
+            </section>
+
+            {/* 承認待ち申請 */}
             {pendingRequests.length > 0 && (
-              <section className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-6 rounded-[2.5rem] shadow-lg mb-8">
+              <section className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-6 rounded-[2.5rem] shadow-lg">
                 <div className="flex items-center gap-2 mb-5 px-2">
                   <div className="w-2 h-2 bg-blue-500 rounded-full animate-ping" />
                   <h3 className="text-xs font-black text-blue-600 uppercase tracking-widest">
-                    友達申請が届いています ({pendingRequests.length})
+                    申請が届いています ({pendingRequests.length})
                   </h3>
                 </div>
                 <div className="space-y-3">
                   {pendingRequests.map((req) => (
-                    <div key={req.id} className="flex items-center justify-between bg-white p-4 rounded-3xl border border-white shadow-sm">
+                    <div key={req.user_id} className="flex items-center justify-between bg-white p-4 rounded-3xl border border-white shadow-sm">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-100 shadow-inner">
-                          <img 
-                            src={req.sender_profile?.avatar_url || defaultAvatar} 
-                            className="w-full h-full object-cover" 
-                          />
+                          <img src={req.sender_profile?.avatar_url || defaultAvatar} className="w-full h-full object-cover" />
                         </div>
-                        <div className="flex flex-col">
-                          <span className="text-sm font-bold text-gray-800">
-                            {req.sender_profile?.full_name || 'ユーザー'}
-                          </span>
+                        <div className="flex flex-col text-sm">
+                          <span className="font-bold text-gray-800">{req.sender_profile?.full_name}</span>
                           <span className="text-[10px] text-gray-400">友達になりたがっています</span>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <form action={async () => { 'use server'; await acceptFriendRequest(req.user_id); }}>
-                          <button type="submit" className="text-xs bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold">承認</button>
-                        </form>
-                        <form action={async () => { 'use server'; await deleteFriendship(req.user_id); }}>
-                          <button type="submit" className="text-xs bg-gray-50 text-gray-500 px-5 py-2.5 rounded-full font-bold border border-gray-100">あとで</button>
-                        </form>
-                      </div>
+                      <form action={async () => { 'use server'; await acceptFriendRequest(req.user_id); }}>
+                        <button type="submit" className="text-xs bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold shadow-md">承認</button>
+                      </form>
                     </div>
                   ))}
                 </div>
               </section>
             )}
 
-            {/* 2. 投稿フォーム */}
             <section>
               <form action={createPost} className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100">
                 <textarea name="content" placeholder="最近あった、いいことは？" className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-black border-none" rows={3} required />
@@ -178,7 +180,6 @@ export default async function Index(props: {
               </form>
             </section>
 
-            {/* 3. タイムライン */}
             <Suspense fallback={<div className="text-center py-10">読み込み中...</div>}>
               <div className="space-y-6">
                 {mainPosts.map((post) => (
