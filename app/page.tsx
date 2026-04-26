@@ -12,6 +12,7 @@ export default async function Index(props: {
   searchParams: SearchParams;
 }) {
   const supabase = await createClient()
+  // ユーザー取得エラーで画面が止まらないよう対策
   const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
   const user = userData?.user
 
@@ -24,73 +25,77 @@ export default async function Index(props: {
   let acceptedFriends: any[] = [] 
   
   if (user) {
-    // 1. 投稿データを取得
-    const { data: posts } = await supabase
-      .from('posts')
-      .select(`*, reactions (type, user_id)`)
-      .order('created_at', { ascending: false })
+    try {
+      // 1. 投稿データを取得
+      const { data: posts } = await supabase
+        .from('posts')
+        .select(`*, reactions (type, user_id)`)
+        .order('created_at', { ascending: false })
 
-    // 2. 友達関係の「生データ」を取得
-    const { data: friendshipsRaw } = await supabase
-      .from('friendships')
-      .select('*')
-      .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
+      // 2. 友達関係の「生データ」を取得
+      const { data: friendshipsRaw } = await supabase
+        .from('friendships')
+        .select('*')
+        .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
 
-    // 3. 全ての関連プロフィールを取得（投稿主 + 友達候補）
-    const postUserIds = posts?.map(p => p.user_id) || [];
-    const allFriendUserIds = friendshipsRaw?.map(f => f.user_id === user.id ? f.friend_id : f.user_id) || [];
-    const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds]));
-    
-    const { data: allProfiles } = await supabase
-      .from('profiles')
-      .select('id, full_name, avatar_url')
-      .in('id', allRelevantUserIds);
+      // 3. 全ての関連プロフィールを取得
+      const postUserIds = posts?.map(p => p.user_id) || [];
+      const allFriendUserIds = friendshipsRaw?.map(f => f.user_id === user.id ? f.friend_id : f.user_id) || [];
+      const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds]));
+      
+      const { data: allProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', allRelevantUserIds);
 
-    // 4. 承認待ちリストの重複排除 (自分宛のpendingのみ)
-    const myPendingRaw = friendshipsRaw?.filter(f => 
-      String(f.friend_id) === String(user.id) && f.status === 'pending'
-    ) || [];
+      // 4. 承認待ちリストの重複排除
+      const myPendingRaw = friendshipsRaw?.filter(f => 
+        String(f.friend_id) === String(user.id) && f.status === 'pending'
+      ) || [];
 
-    const pendingUserIds = new Set(myPendingRaw.map(f => f.user_id));
-    pendingRequests = Array.from(pendingUserIds).map(id => ({
-      user_id: id,
-      sender_profile: allProfiles?.find(p => p.id === id)
-    })).filter(req => req.sender_profile);
+      const pendingUserIds = new Set(myPendingRaw.map(f => f.user_id));
+      pendingRequests = Array.from(pendingUserIds).map(id => ({
+        user_id: id,
+        sender_profile: allProfiles?.find(p => p.id === id)
+      })).filter(req => req.sender_profile);
 
-    // 5. 承認済み友達リストの重複排除
-    const myAcceptedRaw = friendshipsRaw?.filter(f => f.status === 'accepted') || [];
-    const uniqueFriendIds = new Set(
-      myAcceptedRaw.map(f => (String(f.user_id) === String(user.id) ? f.friend_id : f.user_id))
-    );
+      // 5. 承認済み友達リスト
+      const myAcceptedRaw = friendshipsRaw?.filter(f => f.status === 'accepted') || [];
+      const uniqueFriendIds = new Set(
+        myAcceptedRaw.map(f => (String(f.user_id) === String(user.id) ? f.friend_id : f.user_id))
+      );
 
-    acceptedFriends = Array.from(uniqueFriendIds).map(id => {
-      return allProfiles?.find(p => p.id === id);
-    }).filter(Boolean);
+      acceptedFriends = Array.from(uniqueFriendIds).map(id => {
+        return allProfiles?.find(p => id === p.id);
+      }).filter(Boolean);
 
-    // 6. 投稿データの整形
-    if (posts) {
-      const formattedPosts = posts.map(post => {
-        const awesomeCount = post.reactions?.filter((r: any) => r.type === 'awesome').length || 0;
-        const hugCount = post.reactions?.filter((r: any) => r.type === 'hug').length || 0;
-        const myReaction = post.reactions?.find((r: any) => r.user_id === user.id)?.type || null;
+      // 6. 投稿データの整形
+      if (posts) {
+        const formattedPosts = posts.map(post => {
+          const awesomeCount = post.reactions?.filter((r: any) => r.type === 'awesome').length || 0;
+          const hugCount = post.reactions?.filter((r: any) => r.type === 'hug').length || 0;
+          const myReaction = post.reactions?.find((r: any) => r.user_id === user.id)?.type || null;
 
-        let friendStatus: 'none' | 'pending' | 'accepted' | 'me' = 'none';
-        if (post.user_id === user.id) {
-          friendStatus = 'me';
-        } else {
-          const relation = friendshipsRaw?.find(f => 
-            (String(f.user_id) === String(user.id) && String(f.friend_id) === String(post.user_id)) || 
-            (String(f.user_id) === String(post.user_id) && String(f.friend_id) === String(user.id))
-          );
-          if (relation) friendStatus = relation.status as any;
-        }
+          let friendStatus: 'none' | 'pending' | 'accepted' | 'me' = 'none';
+          if (post.user_id === user.id) {
+            friendStatus = 'me';
+          } else {
+            const relation = friendshipsRaw?.find(f => 
+              (String(f.user_id) === String(user.id) && String(f.friend_id) === String(post.user_id)) || 
+              (String(f.user_id) === String(post.user_id) && String(f.friend_id) === String(user.id))
+            );
+            if (relation) friendStatus = relation.status as any;
+          }
 
-        const authorProfile = allProfiles?.find(p => p.id === post.user_id);
-        return { ...post, authorProfile, awesomeCount, hugCount, myReaction, friendStatus };
-      });
+          const authorProfile = allProfiles?.find(p => p.id === post.user_id);
+          return { ...post, authorProfile, awesomeCount, hugCount, myReaction, friendStatus };
+        });
 
-      mainPosts = formattedPosts.filter(p => !p.parent_id);
-      replies = formattedPosts.filter(p => p.parent_id);
+        mainPosts = formattedPosts.filter(p => !p.parent_id);
+        replies = formattedPosts.filter(p => p.parent_id);
+      }
+    } catch (e) {
+      console.error("Data fetch error:", e);
     }
   }
   
@@ -111,16 +116,6 @@ export default async function Index(props: {
       </nav>
 
       <div className="max-w-2xl mx-auto px-4">
-        
-        {/* AI判定の注意文 */}
-        {isToxic && (
-          <div className="bg-amber-50 border border-amber-200 text-amber-700 p-5 rounded-[2rem] mb-8 text-sm font-bold text-center shadow-sm animate-pulse">
-            私はあなたの健康を守ります。
-            <br />
-            <span className="text-[10px] text-amber-600 opacity-70">その発言は誰かを不快にする恐れがあります。</span>
-          </div>
-        )}
-
         {user && (
           <div className="space-y-8">
             
@@ -129,7 +124,7 @@ export default async function Index(props: {
               <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Friends</h3>
               <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
                 {acceptedFriends.length > 0 ? (
-                  acceptedFriends.map((friend) => (
+                  acceptedFriends.map((friend: any) => (
                     <div key={friend.id} className="flex flex-col items-center gap-1 shrink-0 w-16">
                       <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-md">
                         <img src={friend.avatar_url || defaultAvatar} className="w-full h-full object-cover" />
@@ -173,13 +168,22 @@ export default async function Index(props: {
               </section>
             )}
 
+            {/* 投稿フォームとAI注意文 */}
             <section>
+              {isToxic && (
+                <div className="bg-amber-50 border border-amber-200 text-amber-700 p-5 rounded-[2rem] mb-4 text-sm font-bold text-center shadow-sm">
+                  私はあなたの健康を守ります。
+                  <br />
+                  <span className="text-[10px] text-amber-600 opacity-70">その発言は誰かを不快にする恐れがあります。</span>
+                </div>
+              )}
               <form action={createPost} className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100">
                 <textarea name="content" placeholder="最近あった、いいことは？" className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-black border-none" rows={3} required />
                 <button type="submit" className="mt-4 w-full bg-black text-white font-bold py-4 rounded-2xl shadow-lg">投稿をシェア</button>
               </form>
             </section>
 
+            {/* タイムライン表示 */}
             <Suspense fallback={<div className="text-center py-10">読み込み中...</div>}>
               <div className="space-y-6">
                 {mainPosts.map((post) => (
@@ -220,7 +224,7 @@ export default async function Index(props: {
                       </div>
                     )}
 
-                    {/* 返信フォーム */}
+                    {/* 返信フォーム（ここにはisToxicの判定を置かない） */}
                     <form action={createReply} className="flex items-center gap-2 mt-4 bg-gray-50 p-2 rounded-full border border-gray-100">
                       <input type="hidden" name="parentId" value={post.id} />
                       <input name="content" placeholder="返信する..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-black" required />
