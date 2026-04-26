@@ -55,8 +55,8 @@ export default async function Index(props: {
         {/* 注意文の表示エリア */}
         {isToxic && (
           <div className="bg-amber-50 border border-amber-200 text-amber-700 p-5 rounded-[2rem] mb-8 text-sm font-bold text-center shadow-sm animate-pulse">
-            <span className="text-xl block mb-2">✨</span>
-            このコミュニティでは、みんなが心地よく過ごせるポジティブな投稿を大切にしています。
+            <span className="text-xl block mb-2"></span>
+            私はあなたの健康を守ります。その発言が本当に貴方の心を健康にしますか？
             <br />
             <span className="text-[10px] text-amber-600 opacity-70">判定：不適切な可能性がある内容</span>
           </div>
