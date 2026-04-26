@@ -10,7 +10,7 @@ const openai = new OpenAI({
 });
 
 /**
- * カスタムAI判定ロジック（OpenAI GPT-4o-mini使用）
+ * AI判定ロジック
  */
 async function checkContentWithCustomRules(content: string) {
   try {
@@ -21,41 +21,28 @@ async function checkContentWithCustomRules(content: string) {
           role: "system",
           content: `
             あなたはSNSのモデレーターです。以下のルールに従い、投稿を「許可(SAFE)」か「拒否(TOXIC)」で判定してください。
-            判定結果のみを返してください。判定理由は不要です。
+            判定結果のみを返してください。
 
             【拒否する基準】
             1. 他者への攻撃、悪口、馬鹿にするような表現。
-            2. 差別的な内容（人種、性別、宗教、国籍など）。
+            2. 差別的な内容。
             3. 政治、宗教、または特定の団体への攻撃。
-            4. 宣伝、スパム行為。
 
             【許可する基準】
-            1. ポジティブな日常の出来事。
-            2. 感謝の言葉や、他者を励ます内容。
-            3. 一般的な世間話。
-            4. 趣味や興味についての共有s。
-            5. その他、コミュニティガイドラインに反しない内容。
-            6. 後悔や自責などのネガティブな感情を吐露する内容は攻撃的な表現があっても許可する。
-            例：
-            - 「死にたい」 → SAFE（後悔の表現であり、攻撃的な内容ではないため）
-            - 「あいつ死ね」 → TOXIC（他者への攻撃的な表現のため）
-
-
+            1. ポジティブな日常。
+            2. 感謝、励まし。
+            3. 後悔や自責（死にたい等）はSAFE。
           `
         },
-        {
-          role: "user",
-          content: content
-        }
+        { role: "user", content: content }
       ],
       temperature: 0,
     });
-
     const result = response.choices[0].message.content;
     return result?.includes("TOXIC");
   } catch (error) {
-    console.error("AI判定中にエラーが発生しました:", error);
-    return false; // エラー時は一旦通すが、ログで確認できるようにする
+    console.error("AI判定エラー:", error);
+    return false;
   }
 }
 
@@ -93,11 +80,8 @@ export async function createPost(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  // カスタムAI判定を実行
   const isToxic = await checkContentWithCustomRules(content);
-  if (isToxic) {
-    return redirect('/?error=toxic-content');
-  }
+  if (isToxic) return redirect('/?error=toxic-content');
 
   await supabase.from('posts').insert({ content, user_id: user.id });
   revalidatePath('/');
@@ -110,105 +94,67 @@ export async function createReply(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  // カスタムAI判定を実行（返信も同様にチェック！）
   const isToxic = await checkContentWithCustomRules(content);
-  if (isToxic) {
-    return redirect('/?error=toxic-content');
-  }
+  if (isToxic) return redirect('/?error=toxic-content');
 
-  await supabase.from('posts').insert({ 
-    content, 
-    parent_id: parentId, 
-    user_id: user.id 
-  });
+  await supabase.from('posts').insert({ content, parent_id: parentId, user_id: user.id });
   revalidatePath('/');
 }
 
-// --- プロフィール更新（画像アップロード対応） ---
+// --- プロフィール更新 ---
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
   const fullName = formData.get('fullName') as string;
   const avatarFile = formData.get('avatar') as File;
   const { data: { user } } = await supabase.auth.getUser();
-  
   if (!user) return;
 
   let avatarUrl = null;
-
   if (avatarFile && avatarFile.size > 0) {
     const fileExt = avatarFile.name.split('.').pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from('avatars')
-      .upload(fileName, avatarFile, { upsert: true });
-
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, avatarFile, { upsert: true });
     if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(fileName);
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
       avatarUrl = publicUrl;
     }
   }
 
   const updateData: any = { id: user.id, full_name: fullName };
-  if (avatarUrl) {
-    updateData.avatar_url = avatarUrl;
-  }
+  if (avatarUrl) updateData.avatar_url = avatarUrl;
 
-  const { error: dbError } = await supabase.from('profiles').upsert(updateData);
-  if (dbError) return redirect('/profile?error=update-failed');
-  
+  await supabase.from('profiles').upsert(updateData);
   revalidatePath('/', 'layout');
   redirect('/');
 }
-// app/actions.ts (追加部分)
 
+// --- リアクション ---
 export async function handleReaction(postId: number, reactionType: 'awesome' | 'hug') {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return; // 未ログインなら何もしない
+  if (!user) return;
 
-  // 既にリアクションしているか確認
-  const { data: existingReaction } = await supabase
-    .from('reactions')
-    .select('id')
-    .eq('post_id', postId)
-    .eq('user_id', user.id)
-    .eq('type', reactionType)
-    .single();
+  const { data: existing } = await supabase.from('reactions').select('id').eq('post_id', postId).eq('user_id', user.id).eq('type', reactionType).single();
 
-  if (existingReaction) {
-    // 既にしていれば、リアクションを取り消す（削除）
-    await supabase.from('reactions').delete().eq('id', existingReaction.id);
+  if (existing) {
+    await supabase.from('reactions').delete().eq('id', existing.id);
   } else {
-    // していなければ、リアクションを追加（挿入）
-    await supabase.from('reactions').insert({
-      post_id: postId,
-      user_id: user.id,
-      type: reactionType,
-    });
+    await supabase.from('reactions').insert({ post_id: postId, user_id: user.id, type: reactionType });
   }
-
-  // 画面を更新
   revalidatePath('/');
 }
-// --- 友達機能用のアクション ---
 
-// 1. 友達申請を送る
+// --- 友達機能（revalidatePathを追加！） ---
+
 export async function sendFriendRequest(friendId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  const { error } = await supabase
-    .from('friendships')
-    .insert({ user_id: user.id, friend_id: friendId, status: 'pending' });
-
-  if (error) console.error(error);
+  await supabase.from('friendships').insert({ user_id: user.id, friend_id: friendId, status: 'pending' });
+  revalidatePath('/');
 }
 
-// 2. 友達申請を承認する
 export async function acceptFriendRequest(senderId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -220,19 +166,22 @@ export async function acceptFriendRequest(senderId: string) {
     .eq('user_id', senderId)
     .eq('friend_id', user.id);
 
-  if (error) console.error(error);
+  if (error) {
+    console.error(error);
+  } else {
+    revalidatePath('/'); // これで承認リストが消え、友達状態が反映されます
+  }
 }
 
-// 3. 友達申請を削除/拒否する
 export async function deleteFriendship(targetUserId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
 
-  const { error } = await supabase
+  await supabase
     .from('friendships')
     .delete()
     .or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
 
-  if (error) console.error(error);
+  revalidatePath('/');
 }
