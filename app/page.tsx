@@ -33,22 +33,30 @@ export default async function Index(props: {
       `)
       .order('created_at', { ascending: false })
 
-    // 2. 友達関係を取得（ profiles:user_id としてリレーションを指定 ）
-    const { data: friendships } = await supabase
+    // 2. 友達関係の「生データ」を取得（リレーションを使わない）
+    const { data: friendshipsRaw } = await supabase
       .from('friendships')
-      .select(`
-        *,
-        profiles:user_id (
-          full_name,
-          avatar_url
-        )
-      `)
+      .select('*')
       .or(`user_id.eq.${user.id},friend_id.eq.${user.id}`);
 
-    // 3. 自分宛の「承認待ち」申請を抽出（StringでIDの型を確実に合わせる）
-    pendingRequests = friendships?.filter(f => 
+    // 3. 自分宛の「承認待ち」を抽出して、プロフィールを個別に取得して結合する
+    const myPendingRaw = friendshipsRaw?.filter(f => 
       String(f.friend_id) === String(user.id) && f.status === 'pending'
     ) || [];
+
+    if (myPendingRaw.length > 0) {
+      const senderIds = myPendingRaw.map(f => f.user_id);
+      const { data: senderProfiles } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url')
+        .in('id', senderIds);
+
+      // 申請データにプロフィール情報を手動で合成
+      pendingRequests = myPendingRaw.map(req => ({
+        ...req,
+        sender_profile: senderProfiles?.find(p => p.id === req.user_id)
+      }));
+    }
 
     if (posts) {
       const formattedPosts = posts.map(post => {
@@ -60,7 +68,8 @@ export default async function Index(props: {
         if (post.user_id === user.id) {
           friendStatus = 'me';
         } else {
-          const relation = friendships?.find(f => 
+          // friendshipsRaw から現在の投稿主との関係を探す
+          const relation = friendshipsRaw?.find(f => 
             (String(f.user_id) === String(user.id) && String(f.friend_id) === String(post.user_id)) || 
             (String(f.user_id) === String(post.user_id) && String(f.friend_id) === String(user.id))
           );
@@ -111,7 +120,7 @@ export default async function Index(props: {
         ) : (
           <div className="space-y-8">
             
-            {/* --- 承認待ちリスト：ここが修正ポイント --- */}
+            {/* --- 承認待ちリスト：手動結合したデータを使用 --- */}
             {pendingRequests.length > 0 && (
               <section className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-6 rounded-[2.5rem] shadow-lg mb-8">
                 <div className="flex items-center gap-2 mb-5 px-2">
@@ -126,18 +135,19 @@ export default async function Index(props: {
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-100 shadow-inner">
                           <img 
-                            src={req.profiles?.avatar_url || defaultAvatar} 
+                            src={req.sender_profile?.avatar_url || defaultAvatar} 
                             className="w-full h-full object-cover" 
                           />
                         </div>
                         <div className="flex flex-col">
                           <span className="text-sm font-bold text-gray-800">
-                            {req.profiles?.full_name || 'ユーザー'}
+                            {req.sender_profile?.full_name || 'ユーザー'}
                           </span>
                           <span className="text-[10px] text-gray-400">友達になりたがっています</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
+                        {/* サーバーアクションを呼び出し。引数は申請者のID(user_id) */}
                         <form action={async () => { 'use server'; await acceptFriendRequest(req.user_id); }}>
                           <button type="submit" className="text-xs bg-blue-600 text-white px-5 py-2.5 rounded-full font-bold">承認</button>
                         </form>
@@ -164,7 +174,7 @@ export default async function Index(props: {
                   <div key={post.id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-7">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-200">
+                        <div className="w-10 h-10 rounded-full overflow-hidden border border-gray-200 bg-gray-100">
                           <img src={post.profiles?.avatar_url || defaultAvatar} className="w-full h-full object-cover" />
                         </div>
                         <div className="flex flex-col text-black">
@@ -197,7 +207,7 @@ export default async function Index(props: {
                       </div>
                     )}
 
-                    <form action={createReply} className="flex items-center gap-2 mt-4 bg-gray-50 p-2 rounded-full">
+                    <form action={createReply} className="flex items-center gap-2 mt-4 bg-gray-50 p-2 rounded-full border border-gray-100">
                       <input type="hidden" name="parentId" value={post.id} />
                       <input name="content" placeholder="返信する..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-black" required />
                       <button type="submit" className="bg-gray-800 text-white w-8 h-8 rounded-full flex items-center justify-center">
