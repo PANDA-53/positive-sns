@@ -5,6 +5,7 @@ import { createPost, createReply, logout, acceptFriendRequest } from './actions'
 import { Suspense } from 'react'
 import { ReactionButtons } from '../components/reaction-buttons'
 import { FriendButton } from '../components/friend-button'
+import Link from 'next/link' // 追加：ページ遷移用
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -115,12 +116,12 @@ export default async function Index(props: {
               <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
                 {acceptedFriends.length > 0 ? (
                   acceptedFriends.map((friend: any) => (
-                    <div key={friend.id} className="flex flex-col items-center gap-1 shrink-0 w-16">
+                    <Link key={friend.id} href={`/users/${friend.id}`} className="flex flex-col items-center gap-1 shrink-0 w-16 hover:opacity-80 transition-opacity">
                       <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white shadow-md">
                         <img src={friend.avatar_url || defaultAvatar} className="w-full h-full object-cover" alt="" />
                       </div>
                       <span className="text-[10px] font-bold text-gray-600 truncate w-full text-center">{friend.full_name}</span>
-                    </div>
+                    </Link>
                   ))
                 ) : (
                   <p className="text-[10px] text-gray-400 px-2 italic">まだ友達がいません</p>
@@ -135,11 +136,10 @@ export default async function Index(props: {
                 <div className="space-y-3">
                   {pendingRequests.map((req) => (
                     <div key={req.user_id} className="flex items-center justify-between bg-white p-4 rounded-3xl border border-white shadow-sm">
-                      <div className="flex items-center gap-3">
+                      <Link href={`/users/${req.user_id}`} className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                         <img src={req.sender_profile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover" alt="" />
                         <span className="font-bold text-sm text-gray-800">{req.sender_profile?.full_name}</span>
-                      </div>
-                      {/* 型エラー回避のため input を経由させる形式に変更 */}
+                      </Link>
                       <form action={acceptFriendRequest}>
                         <input type="hidden" name="requesterId" value={req.user_id} />
                         <button type="submit" className="text-xs bg-blue-600 text-white px-5 py-2 rounded-full font-bold shadow-md">承認</button>
@@ -170,15 +170,17 @@ export default async function Index(props: {
               <div className="space-y-6">
                 {mainPosts.map((post) => (
                   <div key={post.id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-7">
-                    <div className="flex items-center gap-3 mb-4">
-                      <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover" alt="" />
-                      <div className="flex flex-col text-black">
-                        <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between mb-4">
+                      {/* ユーザー詳細へのリンク */}
+                      <Link href={`/users/${post.user_id}`} className="flex items-center gap-3 hover:opacity-70 transition-opacity">
+                        <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover" alt="" />
+                        <div className="flex flex-col text-black">
                           <span className="text-sm font-bold">{post.authorProfile?.full_name || '匿名'}</span>
-                          <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
+                          <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
                         </div>
-                        <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
-                      </div>
+                      </Link>
+                      {/* 友達ボタン（リンクの外側に配置） */}
+                      <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
                     </div>
                     
                     <p className="text-base text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
@@ -190,7 +192,9 @@ export default async function Index(props: {
                       <div className="ml-8 mt-6 space-y-4 border-l-2 border-gray-100 pl-6 mb-6">
                         {replies.filter(r => r.parent_id === post.id).map(reply => (
                           <div key={reply.id} className="bg-gray-50 p-3 rounded-2xl">
-                            <span className="font-bold text-gray-600 block mb-1 text-xs">{reply.authorProfile?.full_name || '匿名'}</span>
+                            <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-600 block mb-1 text-xs hover:underline">
+                              {reply.authorProfile?.full_name || '匿名'}
+                            </Link>
                             <span className="text-gray-700">{reply.content}</span>
                           </div>
                         ))}
@@ -211,7 +215,6 @@ export default async function Index(props: {
             </Suspense>
           </div>
         ) : (
-          /* 未ログイン時の表示（真っ白回避） */
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[2rem] shadow-sm border border-gray-100">
             <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 text-gray-300">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10">

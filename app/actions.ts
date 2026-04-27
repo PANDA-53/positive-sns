@@ -107,27 +107,48 @@ export async function createReply(formData: FormData) {
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
   const fullName = formData.get('fullName') as string;
+  const bio = formData.get('bio') as string; // 自己紹介を取得
   const avatarFile = formData.get('avatar') as File;
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  
+  if (!user) return redirect('/login');
 
   let avatarUrl = null;
-  if (avatarFile && avatarFile.size > 0) {
+  // 画像が選択されている場合のみアップロード処理
+  if (avatarFile && avatarFile.size > 0 && avatarFile.name !== 'undefined') {
     const fileExt = avatarFile.name.split('.').pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
     const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, avatarFile, { upsert: true });
+    
     if (!uploadError) {
       const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
       avatarUrl = publicUrl;
     }
   }
 
-  const updateData: any = { id: user.id, full_name: fullName };
-  if (avatarUrl) updateData.avatar_url = avatarUrl;
+  // 更新用データの構築
+  const updateData: any = { 
+    id: user.id, 
+    full_name: fullName,
+    bio: bio 
+  };
+  
+  if (avatarUrl) {
+    updateData.avatar_url = avatarUrl;
+  }
 
-  await supabase.from('profiles').upsert(updateData);
+  // データベース更新
+  const { error } = await supabase.from('profiles').upsert(updateData);
+
+  if (error) {
+    console.error("Profile update error:", error);
+    // エラー時は元のページにエラーをつけて戻す等の処理が必要な場合もありますが、一旦リダイレクト
+    return redirect(`/users/${user.id}?error=update-failed`);
+  }
+
   revalidatePath('/', 'layout');
-  redirect('/');
+  // 保存後は自分のプロフィール詳細ページへリダイレクト
+  redirect(`/users/${user.id}`);
 }
 
 // --- リアクション ---
@@ -156,9 +177,6 @@ export async function sendFriendRequest(friendId: string) {
   revalidatePath('/');
 }
 
-/**
- * 修正ポイント: 引数を FormData に変更し、内部で requesterId を取得する
- */
 export async function acceptFriendRequest(formData: FormData) {
   const requesterId = formData.get('requesterId') as string;
   if (!requesterId) return;
@@ -170,8 +188,8 @@ export async function acceptFriendRequest(formData: FormData) {
   const { error } = await supabase
     .from('friendships')
     .update({ status: 'accepted' })
-    .eq('user_id', requesterId) // 申請を送ってきた人のID
-    .eq('friend_id', user.id);   // 自分のID（承認側）
+    .eq('user_id', requesterId)
+    .eq('friend_id', user.id);
 
   if (error) {
     console.error('承認エラー:', error);
