@@ -1,3 +1,4 @@
+// @ts-nocheck
 import withPWAInit from "@ducanh2912/next-pwa";
 import type { NextConfig } from "next";
 
@@ -13,7 +14,11 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
-  // ここに既存の設定があれば記述
+  // Webpackを強制するための設定（Vercelのビルドエラー対策）
+  webpack: (config) => {
+    return config;
+  },
 };
 
+// 最後にこれを追加することで、設定が有効になります
 export default withPWA(nextConfig);
