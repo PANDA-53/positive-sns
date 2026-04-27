@@ -1,13 +1,13 @@
 export const dynamic = 'force-dynamic';
 
 import { createClient } from '../utils/supabase/server'
-import { createPost, createReply, logout, acceptFriendRequest } from './actions'
+import { createPost, createReply, logout, acceptFriendRequest, deletePost } from './actions'
 import { Suspense } from 'react'
 import { ReactionButtons } from '../components/reaction-buttons'
 import { FriendButton } from '../components/friend-button'
 import PostForm from '../components/post-form'
 import Link from 'next/link'
-import PullToRefresh from '../components/pull-to-refresh' // インポート追加
+import PullToRefresh from '../components/pull-to-refresh'
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -25,7 +25,10 @@ export default async function Index(props: {
   let replies: any[] = []
   let pendingRequests: any[] = [] 
   let acceptedFriends: any[] = [] 
+  let currentUserProfile: any = null // 自分のプロフィールを格納する変数
   
+  const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
+
   if (user) {
     try {
       const { data: posts } = await supabase
@@ -40,12 +43,16 @@ export default async function Index(props: {
 
       const postUserIds = posts?.map(p => p.user_id) || [];
       const allFriendUserIds = friendshipsRaw?.map(f => f.user_id === user.id ? f.friend_id : f.user_id) || [];
-      const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds]));
+      // 自分のIDもプロフィール取得対象に含める
+      const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds, user.id]));
       
       const { data: allProfiles } = await supabase
         .from('profiles')
         .select('id, full_name, avatar_url')
         .in('id', allRelevantUserIds);
+
+      // 自分のプロフィールを特定
+      currentUserProfile = allProfiles?.find(p => p.id === user.id);
 
       const myPendingRaw = friendshipsRaw?.filter(f => 
         String(f.friend_id) === String(user.id) && f.status === 'pending'
@@ -90,32 +97,39 @@ export default async function Index(props: {
       console.error(e);
     }
   }
-  
-  const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
   return (
     <PullToRefresh>
       <main className="min-h-screen bg-[#F2F2F2] text-black pb-12 font-sans overflow-x-hidden">
-        {/* ナビゲーション：ログイン・未ログイン共通 */}
-        <nav className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200 mb-6">
+        {/* ナビゲーション：自分のプロフィール画像と名前を表示 */}
+        <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200">
           <div className="max-w-2xl mx-auto px-4 h-16 flex justify-between items-center">
             <h1 className="text-lg font-bold italic">Timeline</h1>
-            <div className="flex items-center gap-4 text-black">
+            <div className="flex items-center gap-3">
               {user ? (
                 <>
-                  <Link href="/profile" className="text-xs text-gray-500 font-bold">設定</Link>
+                  <Link href="/profile" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
+                    <img 
+                      src={currentUserProfile?.avatar_url || defaultAvatar} 
+                      className="w-8 h-8 rounded-full object-cover border border-gray-100 shadow-sm" 
+                      alt="" 
+                    />
+                    <span className="text-xs font-bold text-gray-700 hidden sm:inline">
+                      {currentUserProfile?.full_name || 'ユーザー'}
+                    </span>
+                  </Link>
                   <form action={logout}>
-                    <button className="text-xs bg-white border border-gray-200 text-gray-500 px-4 py-2 rounded-full font-bold">ログアウト</button>
+                    <button className="text-[10px] bg-white border border-gray-200 text-gray-500 px-3 py-1.5 rounded-full font-bold">ログアウト</button>
                   </form>
                 </>
               ) : (
-                <Link href="/login" className="text-xs bg-black text-white px-5 py-2 rounded-full font-bold shadow-sm">ログイン</Link>
+                <Link href="/login" className="text-xs bg-black text-white px-5 py-2 rounded-full font-bold">ログイン</Link>
               )}
             </div>
           </div>
         </nav>
 
-        <div className="max-w-2xl mx-auto px-4">
+        <div className="max-w-2xl mx-auto px-4 pt-6">
           {user ? (
             <div className="space-y-8">
               {/* 友達一覧 */}
@@ -171,7 +185,7 @@ export default async function Index(props: {
               </section>
 
               {/* タイムライン */}
-              <Suspense fallback={<div className="text-center py-10">読み込み中...</div>}>
+              <Suspense fallback={<div className="text-center py-10 text-gray-400 text-xs">読み込み中...</div>}>
                 <div className="space-y-6">
                   {mainPosts.map((post) => (
                     <div key={post.id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-7">
@@ -183,14 +197,30 @@ export default async function Index(props: {
                             <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
                           </div>
                         </Link>
-                        <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
+                        
+                        <div className="flex items-center gap-2">
+                          {post.user_id === user.id ? (
+                            <form action={deletePost} onSubmit={(e) => {
+                              if(!confirm("投稿を削除してもよろしいですか？")) e.preventDefault();
+                            }}>
+                              <input type="hidden" name="postId" value={post.id} />
+                              <button type="submit" className="text-gray-300 hover:text-red-500 transition-colors p-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                                </svg>
+                              </button>
+                            </form>
+                          ) : (
+                            <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
+                          )}
+                        </div>
                       </div>
                       
                       <p className="text-base text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
 
                       {post.image_url && (
-                        <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
-                          <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[400px]" />
+                        <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
+                          <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[450px]" />
                         </div>
                       )}
 
@@ -204,16 +234,17 @@ export default async function Index(props: {
                               <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-600 block mb-1 text-xs hover:underline">
                                 {reply.authorProfile?.full_name || '匿名'}
                               </Link>
-                              <span className="text-gray-700">{reply.content}</span>
+                              <span className="text-gray-700 text-sm">{reply.content}</span>
                             </div>
                           ))}
                         </div>
                       )}
 
+                      {/* 返信フォーム */}
                       <form action={createReply} className="flex items-center gap-2 mt-4 bg-gray-50 p-2 rounded-full border border-gray-100">
                         <input type="hidden" name="parentId" value={post.id} />
                         <input name="content" placeholder="返信する..." className="flex-1 bg-transparent px-4 py-2 text-sm outline-none text-black" required />
-                        <button type="submit" className="bg-gray-800 text-white w-8 h-8 rounded-full flex items-center justify-center">
+                        <button type="submit" className="bg-gray-800 text-white w-8 h-8 rounded-full flex items-center justify-center hover:scale-105 transition-transform">
                           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M3.105 2.289a.75.75 0 00-.826.95l1.414 4.925L10.79 10l-7.097 1.836-1.414 4.925a.75.75 0 00.826.95 44.82 44.82 0 0014.174-7.443.75.75 0 000-1.216 44.82 44.82 0 00-14.174-7.443z" /></svg>
                         </button>
                       </form>
@@ -223,18 +254,20 @@ export default async function Index(props: {
               </Suspense>
             </div>
           ) : (
-            /* 未ログイン時：Timelineの位置に合わせたカード表示 */
-            <div className="flex flex-col items-center justify-center py-16 bg-white rounded-[2.5rem] shadow-xl border border-gray-100">
-              <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 text-gray-300">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
-                </svg>
+            /* 未ログイン時 */
+            <div className="py-10 flex flex-col items-center justify-center">
+              <div className="w-full bg-white rounded-[2.5rem] shadow-xl border border-gray-100 p-12 flex flex-col items-center justify-center text-center">
+                <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 text-gray-300 shadow-inner">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                </div>
+                <h2 className="text-xl font-bold mb-2">ここは貴方の健康を守ります。</h2>
+                <p className="text-gray-500 mb-8 text-sm">利用するにはログインが必要です</p>
+                <Link href="/login" className="bg-black text-white px-12 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-transform active:scale-95">
+                  ログイン画面へ
+                </Link>
               </div>
-              <h2 className="text-xl font-bold mb-2">ここは貴方の健康を守ります。</h2>
-              <p className="text-gray-500 mb-8 text-sm">利用するにはログインが必要です</p>
-              <Link href="/login" className="bg-black text-white px-10 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-transform">
-                ログイン画面へ
-              </Link>
             </div>
           )}
         </div>

@@ -236,3 +236,21 @@ export async function deleteFriendship(targetUserId: string) {
   await supabase.from('friendships').delete().or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
   revalidatePath('/');
 }
+// app/actions.ts
+
+export async function deletePost(formData: FormData) {
+  const postId = formData.get('postId') as string;
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('posts')
+    .delete()
+    .eq('id', postId);
+
+  if (error) {
+    console.error('削除失敗:', error);
+    return;
+  }
+
+  revalidatePath('/');
+}
