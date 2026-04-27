@@ -5,7 +5,8 @@ import { createPost, createReply, logout, acceptFriendRequest } from './actions'
 import { Suspense } from 'react'
 import { ReactionButtons } from '../components/reaction-buttons'
 import { FriendButton } from '../components/friend-button'
-import Link from 'next/link' // 追加：ページ遷移用
+import PostForm from '../components/post-form' // 投稿フォームをインポート
+import Link from 'next/link'
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -98,7 +99,7 @@ export default async function Index(props: {
           <h1 className="text-lg font-bold italic">Timeline</h1>
           {user && (
             <div className="flex items-center gap-4 text-black">
-              <a href="/profile" className="text-xs text-gray-500 font-bold">設定</a>
+              <Link href="/profile" className="text-xs text-gray-500 font-bold">設定</Link>
               <form action={logout}>
                 <button className="text-xs bg-white border border-gray-200 text-gray-500 px-4 py-2 rounded-full font-bold">ログアウト</button>
               </form>
@@ -150,7 +151,7 @@ export default async function Index(props: {
               </section>
             )}
 
-            {/* 投稿フォームとAI判定メッセージ */}
+            {/* 投稿フォームエリア（AI判定メッセージ含む） */}
             <section>
               {isToxic && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-700 p-5 rounded-[2.5rem] mb-4 text-sm font-bold text-center shadow-sm animate-pulse">
@@ -159,10 +160,8 @@ export default async function Index(props: {
                   <span className="text-[10px] text-amber-600 opacity-70">傷つける発言を検知しました。</span>
                 </div>
               )}
-              <form action={createPost} className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100">
-                <textarea name="content" placeholder="最近あった、いいことは？" className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-black border-none" rows={3} required />
-                <button type="submit" className="mt-4 w-full bg-black text-white font-bold py-4 rounded-2xl shadow-lg">投稿をシェア</button>
-              </form>
+              {/* クライアントコンポーネント化した投稿フォーム */}
+              <PostForm />
             </section>
 
             {/* タイムライン */}
@@ -171,7 +170,6 @@ export default async function Index(props: {
                 {mainPosts.map((post) => (
                   <div key={post.id} className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-7">
                     <div className="flex items-center justify-between mb-4">
-                      {/* ユーザー詳細へのリンク */}
                       <Link href={`/users/${post.user_id}`} className="flex items-center gap-3 hover:opacity-70 transition-opacity">
                         <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover" alt="" />
                         <div className="flex flex-col text-black">
@@ -179,11 +177,17 @@ export default async function Index(props: {
                           <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
                         </div>
                       </Link>
-                      {/* 友達ボタン（リンクの外側に配置） */}
                       <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
                     </div>
                     
                     <p className="text-base text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
+
+                    {/* 投稿画像の表示エリア */}
+                    {post.image_url && (
+                      <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm">
+                        <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[400px]" />
+                      </div>
+                    )}
 
                     <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
 
@@ -215,6 +219,7 @@ export default async function Index(props: {
             </Suspense>
           </div>
         ) : (
+          /* 非ログイン時表示 */
           <div className="flex flex-col items-center justify-center py-20 bg-white rounded-[2rem] shadow-sm border border-gray-100">
             <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6 text-gray-300">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-10 h-10">
@@ -223,9 +228,9 @@ export default async function Index(props: {
             </div>
             <h2 className="text-xl font-bold mb-2">ここは貴方の健康を守ります。</h2>
             <p className="text-gray-500 mb-8 text-sm">ログインが必要です</p>
-            <a href="/login" className="bg-black text-white px-10 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-transform">
+            <Link href="/login" className="bg-black text-white px-10 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-transform">
               ログイン画面へ
-            </a>
+            </Link>
           </div>
         )}
       </div>

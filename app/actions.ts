@@ -11,6 +11,7 @@ const openai = new OpenAI({
 
 /**
  * AI判定ロジック
+ * SAFE/TOXICの基準を項目別に整理
  */
 async function checkContentWithCustomRules(content: string) {
   try {
@@ -19,15 +20,39 @@ async function checkContentWithCustomRules(content: string) {
       messages: [
         {
           role: "system",
-          content: `あなたはSNSのモデレーターです。判定結果のみ(SAFE/TOXIC)返してください。`
+          content: `あなたはSNSのモデレーターです。以下の基準に従って投稿を判定してください。
+
+【TOXIC（投稿を禁止する基準）】
+・他者に対する誹謗中傷、攻撃的な発言
+・差別、偏見、または尊厳を傷つける内容
+・コミュニティの和を乱すような過度に攻撃的な言葉
+・他者を不快にする意図が感じられる自己中心的な主張
+・（ここに追加の禁止ルールを書き込めます）
+
+【SAFE（投稿を許可する基準）】
+・誰かを笑顔にする、またはポジティブな日常の共有
+・建設的な意見交換や、敬意を払ったコミュニケーション
+・個人の感想や日記としての健全な内容
+・自責や後悔を含むネガティブな表現は、他者を攻撃するものでなければ許可されるべき
+例：自分はなんてダメな人間なんだろう...（これは自己表現であり、他者を攻撃していないためSAFEと判断されるべき）
+例：消えたい。死にたい。（これも自己表現であり、他者を攻撃していないためSAFEと判断されるべき）
+・（ここに追加の許可ルールを書き込めます）
+
+出力は "SAFE" または "TOXIC" のいずれか1単語のみとしてください。`
         },
-        { role: "user", content: content }
+        { 
+          role: "user", 
+          content: `以下の投稿内容を判定してください：\n\n"${content}"` 
+        }
       ],
       temperature: 0,
     });
-    return response.choices[0].message.content?.includes("TOXIC");
+
+    const result = response.choices[0].message.content || "";
+    return result.includes("TOXIC");
   } catch (error) {
-    return false;
+    console.error("AI判定エラー:", error);
+    return false; 
   }
 }
 
@@ -62,11 +87,48 @@ export async function logout() {
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
+  const imageFile = formData.get('image') as File; // 画像ファイルを取得
+
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
+  if (!user) return redirect('/login');
+
+  // 1. AI判定
   const isToxic = await checkContentWithCustomRules(content);
   if (isToxic) return redirect('/?error=toxic-content');
-  await supabase.from('posts').insert({ content, user_id: user.id });
+
+  let imageUrl = null;
+
+  // 2. 画像のアップロード処理
+  if (imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
+    const fileExt = imageFile.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    
+    const { error: uploadError } = await supabase.storage
+      .from('post_images')
+      .upload(fileName, imageFile);
+    
+    if (uploadError) {
+      console.error("Post Image Upload Error:", uploadError.message);
+    } else {
+      const { data: { publicUrl } } = supabase.storage
+        .from('post_images')
+        .getPublicUrl(fileName);
+      imageUrl = publicUrl;
+    }
+  }
+
+  // 3. DBに保存
+  const { error: dbError } = await supabase.from('posts').insert({ 
+    content, 
+    user_id: user.id,
+    image_url: imageUrl // カラムを追加済みである前提
+  });
+
+  if (dbError) {
+    console.error("Post DB Error:", dbError.message);
+    return redirect(`/?error=db_failed`);
+  }
+
   revalidatePath('/');
   redirect('/'); 
 }
@@ -84,18 +146,16 @@ export async function createReply(formData: FormData) {
   redirect('/'); 
 }
 
-// --- プロフィール更新（デバッグ強化版） ---
+// --- プロフィール更新 ---
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
   const fullName = formData.get('fullName') as string;
   const bio = formData.get('bio') as string;
   const avatarFile = formData.get('avatar') as File;
   
-  // 1. ユーザーチェック
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) return redirect('/login');
 
-  // 2. 既存の画像URLを保持
   const { data: current } = await supabase
     .from('profiles')
     .select('avatar_url')
@@ -104,7 +164,6 @@ export async function updateProfile(formData: FormData) {
   
   let avatarUrl = current?.avatar_url || null;
 
-  // 3. 画像アップロード
   if (avatarFile && avatarFile.size > 0 && avatarFile.name !== 'undefined') {
     const fileExt = avatarFile.name.split('.').pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
@@ -114,8 +173,6 @@ export async function updateProfile(formData: FormData) {
       .upload(fileName, avatarFile, { upsert: true });
     
     if (uploadError) {
-      console.error("Storage Error:", uploadError.message);
-      // ストレージエラーがあればURLに表示して止める
       return redirect(`/profile?error=storage_${encodeURIComponent(uploadError.message)}`);
     }
 
@@ -125,7 +182,6 @@ export async function updateProfile(formData: FormData) {
     avatarUrl = publicUrl;
   }
 
-  // 4. DB更新
   const updateData = { 
     id: user.id, 
     full_name: fullName,
@@ -135,21 +191,17 @@ export async function updateProfile(formData: FormData) {
   };
 
   const { error: dbError } = await supabase.from('profiles').upsert(updateData);
-
   if (dbError) {
-    console.error("DB Error:", dbError.message);
-    // DBエラーがあればURLに表示して止める（ここで「テーブルがない」等の理由がわかります）
     return redirect(`/profile?error=db_${encodeURIComponent(dbError.message)}`);
   }
 
-  // 5. 成功時の処理
   revalidatePath('/', 'layout'); 
   revalidatePath('/profile');
   revalidatePath(`/users/${user.id}`);
   redirect(`/users/${user.id}`);
 }
 
-// --- リアクション・友達機能（省略せず保持） ---
+// --- リアクション・友達機能 ---
 export async function handleReaction(postId: number, reactionType: 'awesome' | 'hug') {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
