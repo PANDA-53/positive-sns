@@ -83,10 +83,9 @@ export async function createPost(formData: FormData) {
   const isToxic = await checkContentWithCustomRules(content);
   if (isToxic) return redirect('/?error=toxic-content');
 
-  // 成功時
   await supabase.from('posts').insert({ content, user_id: user.id });
   revalidatePath('/');
-  redirect('/'); // URLの?error=...を消すためにトップへリダイレクト
+  redirect('/'); 
 }
 
 export async function createReply(formData: FormData) {
@@ -99,10 +98,9 @@ export async function createReply(formData: FormData) {
   const isToxic = await checkContentWithCustomRules(content);
   if (isToxic) return redirect('/?error=toxic-content');
 
-  // 成功時
   await supabase.from('posts').insert({ content, parent_id: parentId, user_id: user.id });
   revalidatePath('/');
-  redirect('/'); // URLの?error=...を消すためにトップへリダイレクト
+  redirect('/'); 
 }
 
 // --- プロフィール更新 ---
@@ -158,7 +156,13 @@ export async function sendFriendRequest(friendId: string) {
   revalidatePath('/');
 }
 
-export async function acceptFriendRequest(senderId: string) {
+/**
+ * 修正ポイント: 引数を FormData に変更し、内部で requesterId を取得する
+ */
+export async function acceptFriendRequest(formData: FormData) {
+  const requesterId = formData.get('requesterId') as string;
+  if (!requesterId) return;
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
@@ -166,11 +170,11 @@ export async function acceptFriendRequest(senderId: string) {
   const { error } = await supabase
     .from('friendships')
     .update({ status: 'accepted' })
-    .eq('user_id', senderId)
-    .eq('friend_id', user.id);
+    .eq('user_id', requesterId) // 申請を送ってきた人のID
+    .eq('friend_id', user.id);   // 自分のID（承認側）
 
   if (error) {
-    console.error(error);
+    console.error('承認エラー:', error);
   } else {
     revalidatePath('/'); 
   }
