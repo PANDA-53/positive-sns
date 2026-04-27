@@ -12,14 +12,22 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// PWA用のメタデータ設定
 export const metadata: Metadata = {
   title: "Timeline",
   description: "Tree stability monitoring social app",
   manifest: "/manifest.json",
+  // ↓ ここに Apple 用の設定を詳しく追加します
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "Timeline",
+  },
+  icons: {
+    // iPhoneのホーム画面アイコンとして認識させるための記述
+    apple: [
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+    ],
   },
 };
 
