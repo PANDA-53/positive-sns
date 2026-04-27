@@ -248,8 +248,18 @@ export default async function Index(props: {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 00(2.25 2.25z" />
                   </svg>
                 </div>
-                <h2 className="text-xl font-bold mb-2">ここは貴方の健康を守ります。</h2>
-                <p className="text-gray-500 mb-8 text-sm">利用するにはログインが必要です</p>
+                <div className="flex flex-col items-center mb-8 text-center">
+          {/* メインロゴ：ポジティブす */}
+          <h1 className="text-2xl font-black tracking-tighter text-green-700">
+            POSITIVES
+          </h1>
+          
+          {/* サブキャッチコピー */}
+          <p className="text-2xl
+         font-bold tracking-tight text-slate-900">
+            A sanctuary for your soul.
+          </p>
+        </div>
                 <Link href="/login" className="bg-black text-white px-12 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-transform active:scale-95">
                   ログイン画面へ
                 </Link>

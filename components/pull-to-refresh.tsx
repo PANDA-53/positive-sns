@@ -16,6 +16,15 @@ export default function PullToRefresh({ children }: { children: React.ReactNode 
         startY = e.touches[0].pageY;
       }
     };
+    const handleTouchMove = (e: TouchEvent) => {
+  const currentY = e.touches[0].pageY;
+  const progress = currentY - startY;
+
+  // 画面最上部で、かつ下に引っ張っている時だけブラウザのスクロールを止める
+  if (window.scrollY === 0 && progress > 0) {
+    if (e.cancelable) e.preventDefault(); 
+  }
+};
 
     const handleTouchEnd = (e: TouchEvent) => {
       const endY = e.changedTouches[0].pageY;

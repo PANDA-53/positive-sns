@@ -89,18 +89,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-[#F2F2F2] p-4">
       <div className="bg-white p-8 rounded-[2.5rem] shadow-xl w-full max-w-md border border-gray-100">
         
-        <div className="flex flex-col items-center mb-8 text-center">
-          {/* メインロゴ：ポジティブす */}
-          <h1 className="text-2xl font-black tracking-tighter text-green-700">
-            POSITIVES
-          </h1>
-          
-          {/* サブキャッチコピー */}
-          <p className="text-2xl
-         font-bold tracking-tight text-slate-900">
-            A sanctuary for your soul.
-          </p>
-        </div>
+        
 
         <div>
           <Suspense fallback={<div className="text-center text-gray-400 py-10">読み込み中...</div>}>
