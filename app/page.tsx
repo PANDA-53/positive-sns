@@ -154,9 +154,9 @@ export default async function Index(props: {
             <section>
               {isToxic && (
                 <div className="bg-amber-50 border border-amber-200 text-amber-700 p-5 rounded-[2.5rem] mb-4 text-sm font-bold text-center shadow-sm animate-pulse">
-                  私はあなたの健康を守ります。その発言は本当に貴方の心を満足させますか？
+                  その発言は相手と貴方を本当に笑顔にしますか？
                   <br />
-                  <span className="text-[10px] text-amber-600 opacity-70">不快にする恐れのある発言を検知しました。</span>
+                  <span className="text-[10px] text-amber-600 opacity-70">傷つける発言を検知しました。</span>
                 </div>
               )}
               <form action={createPost} className="bg-white p-6 rounded-[2rem] shadow-xl border border-gray-100">
@@ -219,7 +219,7 @@ export default async function Index(props: {
               </svg>
             </div>
             <h2 className="text-xl font-bold mb-2">ここは貴方の健康を守ります。</h2>
-            <p className="text-gray-500 mb-8 text-sm">タイムラインを見るにはログインが必要です</p>
+            <p className="text-gray-500 mb-8 text-sm">ログインが必要です</p>
             <a href="/login" className="bg-black text-white px-10 py-4 rounded-full font-bold shadow-lg hover:scale-105 transition-transform">
               ログイン画面へ
             </a>
