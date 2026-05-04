@@ -17,59 +17,15 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
     startTransition(async () => {
       const result: any = await createReply(formData)
       
+      // AIが「有害」と判定した場合
       if (result && result.isToxic) {
+        // ここでエラーデータをセットすることで、言い換え案（suggestions）が表示されるようになります
         setErrorData(result)
         
-        // --- トースト表示を一時停止（コメントアウト） ---
-        /*
-        toast.custom((t) => (
-          <div 
-            style={{
-              position: 'fixed',
-              top: '24px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 9999,
-              width: 'max-content',
-              maxWidth: '94vw', 
-              pointerEvents: 'none'
-            }}
-          >
-            <div className="bg-white/95 backdrop-blur-md border border-gray-100 shadow-2xl rounded-full py-3 px-6 md:py-4 md:px-10 flex items-center gap-4 md:gap-6 animate-in fade-in zoom-in duration-300 pointer-events-auto">
-              <div className="flex-shrink-0 w-16 h-16 md:w-24 md:h-24 flex items-center justify-center">
-                <Image 
-                  src="/care-robot.png" 
-                  alt="Robot" 
-                  width={120} 
-                  height={120} 
-                  className="w-full h-full object-contain" 
-                />
-              </div>
-              
-              <div className="flex flex-col justify-center min-w-0 pr-2">
-                <p className="text-[14px] md:text-[18px] font-bold text-black leading-tight mb-0.5 md:mb-1 whitespace-nowrap">
-                  それを伝えたら彼は本当に喜ぶでしょうか？
-                </p>
-                <p className="text-[11px] md:text-[14px] text-gray-500 font-medium leading-tight">
-                  {result.reason || "他者を傷つける表現です"}
-                </p>
-              </div>
-
-              <button 
-                onClick={() => toast.dismiss(t)} 
-                className="text-gray-400 hover:text-gray-600 transition-colors ml-2 md:ml-4 p-1"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 md:h-6 md:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-          </div>
-        ), { duration: Infinity });
-        */
-        // -----------------------------------------
-
+        // トースト（ロボット）だけを出さないようにしています
+        console.log("Toxic content detected, showing suggestions only.");
       } else {
+        // 成功時
         setContent('')
         setErrorData(null)
         toast.success("送信完了")
@@ -86,12 +42,12 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
   const handleSuggestionClick = (suggestedText: string) => {
     setContent(suggestedText)
     setErrorData(null)
-    toast.dismiss()
+    // 別の候補を選び直せるよう、一度クリアした後に送信待ち状態にするなどの処理は不要です
   }
 
   return (
     <div className="mt-4">
-      {/* 言い換え案チップ：ここは残しています */}
+      {/* 言い換え案チップ：errorDataがあるときだけ表示 */}
       {errorData?.suggestions && errorData.suggestions.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3 px-2 animate-in fade-in slide-in-from-bottom-2">
           {errorData.suggestions.map((text: string, i: number) => (
@@ -114,7 +70,6 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
         }`}
       >
         <input type="hidden" name="parentId" value={parentId} />
-        {/* text-base にしてズームを防止 */}
         <input 
           name="content" 
           value={content}
