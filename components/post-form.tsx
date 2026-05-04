@@ -105,11 +105,14 @@ export default function PostForm() {
     try {
       const formData = new FormData(e.currentTarget)
       
-      const imageFile = formData.get('image') as File
-      if (imageFile && imageFile.size > 1024 * 1024) {
-        const options = { maxSizeMB: 0.9, maxWidthOrHeight: 1200, useWebWorker: true }
-        const compressedFile = await imageCompression(imageFile, options)
-        formData.set('image', compressedFile, compressedFile.name)
+      // 画像かつ1MB以上の場合のみ圧縮を実行（動画の場合はスキップ）
+      if (!isVideo) {
+        const imageFile = formData.get('image') as File
+        if (imageFile && imageFile.size > 1024 * 1024) {
+          const options = { maxSizeMB: 0.9, maxWidthOrHeight: 1200, useWebWorker: true }
+          const compressedFile = await imageCompression(imageFile, options)
+          formData.set('image', compressedFile, compressedFile.name)
+        }
       }
 
       const result = await createPost(formData) as PostResult
@@ -145,7 +148,7 @@ export default function PostForm() {
       {isToxic && suggestions.length > 0 && (
         <div className="bg-gradient-to-br from-green-50 to-white border-2 border-green-100 p-6 rounded-[2.5rem] shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-xl">🌟</span>
+            
             <p className="text-sm font-black text-green-800 uppercase tracking-wider">Positive Magic</p>
           </div>
           <div className="flex flex-col gap-3">
@@ -167,12 +170,13 @@ export default function PostForm() {
       )}
 
       <form id="post-form" onSubmit={handleSubmit} className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-gray-100 transition-all">
+        {/* text-sm を text-base に変更してズームを防止 */}
         <textarea 
           name="content" 
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder="最近あった、いいことは？" 
-          className={`w-full p-6 rounded-3xl outline-none text-black border-none resize-none transition-all text-sm leading-relaxed ${
+          className={`w-full p-6 rounded-3xl outline-none text-black border-none resize-none transition-all text-base leading-relaxed ${
             isToxic ? 'bg-amber-50/50 shadow-[0_0_0_2px_rgba(245,158,11,0.1)]' : 'bg-gray-50'
           }`} 
           rows={3} 
@@ -180,7 +184,6 @@ export default function PostForm() {
         />
         
         {previewUrl && (
-          /* プレビューエリアの修正箇所 */
           <div className="relative mt-4 rounded-2xl overflow-hidden border border-gray-100 bg-black max-h-[500px] flex items-center justify-center">
             {isVideo ? (
               <video 
@@ -238,7 +241,7 @@ export default function PostForm() {
                 : "bg-black text-white hover:bg-gray-800 active:scale-95 shadow-black/10"
             }`}
           >
-            {isCompressing ? "Sending..." : isToxic ? "Rewrite" : "Share Love"}
+            {isCompressing ? "Sending..." : isToxic ? "Rewrite" : "Share"}
           </button>
         </div>
       </form>
