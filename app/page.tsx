@@ -31,7 +31,7 @@ async function PostListContent({ user }: { user: any }) {
   const { data: allProfiles } = await supabase
     .from('profiles')
     .select('id, full_name, avatar_url')
-    .in('id', allRelevantUserIds);
+    .in('id', allRelevantUserIds); // IDリストでフィルタリング
 
   const pendingRequests = friendshipsRaw
     .filter(f => String(f.friend_id) === String(user.id) && f.status === 'pending')
@@ -132,18 +132,34 @@ async function PostListContent({ user }: { user: any }) {
                     </button>
                   </form>
                 ) : (
-                  // 赤線対策: IDを直接渡すのではなくコンポーネント側の実装に合わせる
                   <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
                 )}
               </div>
             </div>
             <p className="text-base text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
-            {post.image_url && (
+            
+            {/* 動画表示エリア (追加) */}
+            {post.video_url ? (
+              <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-black aspect-video flex items-center justify-center">
+                <video 
+                  src={post.video_url} 
+                  controls 
+                  muted 
+                  loop 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-full object-contain"
+                />
+              </div>
+            ) : post.image_url && (
+              /* 画像表示エリア (既存) */
               <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
                 <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[450px]" />
               </div>
             )}
+
             <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
+            
             {replies.some(r => r.parent_id === post.id) && (
               <div className="ml-8 mt-6 space-y-4 border-l-2 border-gray-100 pl-6 mb-6">
                 {replies.filter(r => r.parent_id === post.id).map(reply => (
@@ -210,7 +226,6 @@ export default async function Index() {
 
       <div className="max-w-2xl mx-auto px-4 pt-6">
         {user ? (
-          // 修正ポイント: userが存在する場合にPullToRefreshで囲み、PostListContentを呼び出す
           <PullToRefresh>
             <Suspense fallback={
               <div className="animate-pulse space-y-4 w-full max-w-md mx-auto mt-10">

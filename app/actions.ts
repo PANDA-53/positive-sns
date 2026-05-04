@@ -58,7 +58,6 @@ async function checkAndSuggestContent(content: string) {
     if (result.startsWith("SAFE")) {
       return { isToxic: false, reason: "", suggestions: [] };
     } else {
-      // 前後の不要な引用符を削除する正規表現を維持
       const parts = result.split("|").map(s => 
         s.trim().replace(/^["「']|["」']$/g, '') 
       );
@@ -74,6 +73,61 @@ async function checkAndSuggestContent(content: string) {
   }
 }
 
+// --- 投稿作成 (動画対応版) ---
+export async function createPost(formData: FormData) {
+  const supabase = await createClient();
+  const content = formData.get('content') as string;
+  const imageFile = formData.get('image') as File | null;
+  const videoFile = formData.get('video') as File | null; // 動画ファイルを取得
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return redirect('/login');
+
+  // AIによるテキスト判定
+  const result = await checkAndSuggestContent(content);
+  if (result.isToxic) return { ...result, errorType: 'toxic-content' };
+
+  let imageUrl = null;
+  let videoUrl = null;
+
+  // 動画のアップロード処理
+  if (videoFile && videoFile.size > 0 && videoFile.name !== 'undefined') {
+    const fileExt = videoFile.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage.from('post_images').upload(fileName, videoFile);
+    
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
+      videoUrl = publicUrl;
+    } else {
+      console.error("動画アップロードエラー:", uploadError);
+    }
+  }
+
+  // 画像のアップロード処理 (動画がない場合、または両方許可する場合)
+  if (!videoUrl && imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
+    const fileExt = imageFile.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage.from('post_images').upload(fileName, imageFile);
+    
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
+      imageUrl = publicUrl;
+    }
+  }
+
+  // DB保存 (video_urlを追加)
+  await supabase.from('posts').insert({ 
+    content, 
+    user_id: user.id, 
+    image_url: imageUrl,
+    video_url: videoUrl 
+  });
+
+  revalidatePath('/');
+  return { isToxic: false };
+}
+
 // --- 返信作成 (ReplyForm連携用) ---
 export async function createReply(formData: FormData) {
   const supabase = await createClient();
@@ -85,7 +139,6 @@ export async function createReply(formData: FormData) {
 
   const result = await checkAndSuggestContent(content);
   
-  // redirectせず、結果をオブジェクトで返すことでトップ戻りを防止
   if (result.isToxic) {
     return { 
       isToxic: true, 
@@ -99,14 +152,12 @@ export async function createReply(formData: FormData) {
   return { isToxic: false };
 }
 
-// --- フレンド・削除・エラー解消用アクション ---
+// --- フレンド・削除・リアクション ---
 
-// 引数を string に変更
 export async function deleteFriendship(targetUserId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-  // friendId ではなく引数の targetUserId を直接使用
   await supabase.from('friendships').delete().eq('user_id', user.id).eq('friend_id', targetUserId);
   revalidatePath('/');
 }
@@ -128,7 +179,6 @@ export async function acceptFriendRequest(formData: FormData) {
   revalidatePath('/');
 }
 
-// --- 認証・投稿・その他 ---
 export async function login(formData: FormData) {
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword({ email: formData.get('email') as string, password: formData.get('password') as string });
@@ -149,32 +199,6 @@ export async function logout() {
   await supabase.auth.signOut();
   revalidatePath('/', 'layout');
   redirect('/login');
-}
-
-export async function createPost(formData: FormData) {
-  const supabase = await createClient();
-  const content = formData.get('content') as string;
-  const imageFile = formData.get('image') as File;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return redirect('/login');
-
-  const result = await checkAndSuggestContent(content);
-  if (result.isToxic) return { ...result, errorType: 'toxic-content' };
-
-  let imageUrl = null;
-  if (imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
-    const fileExt = imageFile.name.split('.').pop();
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-    const { error: uploadError } = await supabase.storage.from('post_images').upload(fileName, imageFile);
-    if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
-      imageUrl = publicUrl;
-    }
-  }
-
-  await supabase.from('posts').insert({ content, user_id: user.id, image_url: imageUrl });
-  revalidatePath('/');
-  return { isToxic: false };
 }
 
 export async function handleReaction(postId: number, reactionType: 'awesome' | 'hug') {
