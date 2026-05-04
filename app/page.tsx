@@ -31,7 +31,7 @@ async function PostListContent({ user }: { user: any }) {
   const { data: allProfiles } = await supabase
     .from('profiles')
     .select('id, full_name, avatar_url')
-    .in('id', allRelevantUserIds); // IDリストでフィルタリング
+    .in('id', allRelevantUserIds);
 
   const pendingRequests = friendshipsRaw
     .filter(f => String(f.friend_id) === String(user.id) && f.status === 'pending')
@@ -138,9 +138,9 @@ async function PostListContent({ user }: { user: any }) {
             </div>
             <p className="text-base text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
             
-            {/* 動画表示エリア (追加) */}
+            {/* 動画表示エリア (縦長対応済み) */}
             {post.video_url ? (
-              <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-black aspect-video flex items-center justify-center">
+              <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-black max-h-[500px] flex items-center justify-center">
                 <video 
                   src={post.video_url} 
                   controls 
@@ -148,13 +148,17 @@ async function PostListContent({ user }: { user: any }) {
                   loop 
                   autoPlay 
                   playsInline 
-                  className="w-full h-full object-contain"
+                  className="w-full h-auto max-h-[500px] object-contain"
                 />
               </div>
             ) : post.image_url && (
-              /* 画像表示エリア (既存) */
-              <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
-                <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[450px]" />
+              /* 画像表示エリア (縦長対応済み) */
+              <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 max-h-[500px] flex items-center justify-center">
+                <img 
+                  src={post.image_url} 
+                  alt="" 
+                  className="w-full h-auto object-contain max-h-[500px]" 
+                />
               </div>
             )}
 
