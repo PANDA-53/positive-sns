@@ -18,7 +18,7 @@ export default function PostForm() {
   const [content, setContent] = useState('')
   const [isCompressing, setIsCompressing] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [isVideo, setIsVideo] = useState(false) // 動画かどうかのフラグ
+  const [isVideo, setIsVideo] = useState(false) 
   const searchParams = useSearchParams()
   const router = useRouter()
   const toastIdRef = useRef<string | number | null>(null)
@@ -73,7 +73,6 @@ export default function PostForm() {
       video.preload = 'metadata'
       video.onloadedmetadata = () => {
         window.URL.revokeObjectURL(video.src)
-        // 10秒制限のチェック
         if (video.duration > 10.9) {
           toast.error("動画は10秒以内にしてください")
           if (fileInputRef.current) fileInputRef.current.value = ""
@@ -106,7 +105,6 @@ export default function PostForm() {
     try {
       const formData = new FormData(e.currentTarget)
       
-      // 画像の場合のみ圧縮を試みる
       const imageFile = formData.get('image') as File
       if (imageFile && imageFile.size > 1024 * 1024) {
         const options = { maxSizeMB: 0.9, maxWidthOrHeight: 1200, useWebWorker: true }
@@ -182,11 +180,21 @@ export default function PostForm() {
         />
         
         {previewUrl && (
-          <div className="relative mt-4 rounded-2xl overflow-hidden border border-gray-100 bg-black aspect-video flex items-center justify-center">
+          /* プレビューエリアの修正箇所 */
+          <div className="relative mt-4 rounded-2xl overflow-hidden border border-gray-100 bg-black max-h-[500px] flex items-center justify-center">
             {isVideo ? (
-              <video src={previewUrl} className="w-full h-full object-contain" controls muted />
+              <video 
+                src={previewUrl} 
+                className="w-full h-auto max-h-[500px] object-contain" 
+                controls 
+                muted 
+              />
             ) : (
-              <img src={previewUrl} alt="Preview" className="w-full h-auto" />
+              <img 
+                src={previewUrl} 
+                alt="Preview" 
+                className="w-full h-auto max-h-[500px] object-contain" 
+              />
             )}
             <button 
               type="button" 
@@ -195,7 +203,7 @@ export default function PostForm() {
                 setIsVideo(false)
                 if (fileInputRef.current) fileInputRef.current.value = ""
               }} 
-              className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center transition-colors hover:bg-black/70"
+              className="absolute top-2 right-2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center transition-colors hover:bg-black/70 z-10"
             >
               ✕
             </button>
@@ -212,7 +220,7 @@ export default function PostForm() {
               <input 
                 ref={fileInputRef}
                 type="file" 
-                name={isVideo ? "video" : "image"} // 動的に変更
+                name={isVideo ? "video" : "image"} 
                 accept="image/*,video/*" 
                 className="hidden" 
                 onChange={handleFileChange} 
