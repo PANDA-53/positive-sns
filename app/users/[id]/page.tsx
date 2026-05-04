@@ -65,11 +65,31 @@ async function UserContent({ id, currentUserId }: { id: string, currentUserId: s
                   </span>
                 </div>
                 <p className="text-base text-gray-800 mb-6 leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                {post.image_url && (
-                  <div className="mb-6 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
-                    <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[500px]" />
+                
+                {/* 動画表示エリア */}
+                {post.video_url ? (
+                  <div className="mb-6 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-black max-h-[500px] flex items-center justify-center">
+                    <video 
+                      src={post.video_url} 
+                      controls 
+                      muted 
+                      loop 
+                      autoPlay 
+                      playsInline 
+                      className="w-full h-auto max-h-[500px] object-contain"
+                    />
+                  </div>
+                ) : post.image_url && (
+                  /* 画像表示エリア */
+                  <div className="mb-6 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 max-h-[500px] flex items-center justify-center">
+                    <img 
+                      src={post.image_url} 
+                      alt="" 
+                      className="w-full h-auto object-contain max-h-[500px]" 
+                    />
                   </div>
                 )}
+
                 <ReactionButtons 
                   postId={post.id} 
                   awesomeCount={reactions.filter((r: any) => r.type === 'awesome').length}
@@ -89,7 +109,7 @@ async function UserContent({ id, currentUserId }: { id: string, currentUserId: s
   );
 }
 
-// --- メインページ（ヘッダーとSuspense担当） ---
+// --- メインページ ---
 export default async function UserProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createClient();
@@ -99,16 +119,13 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
     <main className="min-h-screen bg-[#F2F2F2] pb-12 font-sans text-black">
       <nav className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200 mb-6">
         <div className="max-w-2xl mx-auto px-4 h-16 flex items-center">
-          <Link href="/" className="flex items-center gap-2 text-sm font-bold text-black-500 hover:text-black">
+          <Link href="/" className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-black">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
             <span>To POSITIVES</span>
           </Link>
         </div>
       </nav>
 
-      {/* ここでも Suspense を使います。
-        app/users/[id]/loading.tsx を作成済みであれば、遷移した瞬間にそちらが表示されます。
-      */}
       <Suspense fallback={
         <div className="max-w-2xl mx-auto px-4 animate-pulse">
           <div className="bg-white rounded-[2.5rem] h-64 mb-8"></div>

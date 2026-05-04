@@ -22,7 +22,8 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
         
         // 物理的に絶対的な中央配置を強制
         // handleSubmit 内の toast.custom 部分
-toast.custom((t) => (
+/*
+        toast.custom((t) => (
   <div 
     style={{
       position: 'fixed',
@@ -35,11 +36,11 @@ toast.custom((t) => (
       pointerEvents: 'none'
     }}
   >
-    {/* py（上下）と px（左右）を md 以上で少し削ります */}
-    <div className="bg-white/95 backdrop-blur-md border border-gray-100 shadow-2xl rounded-full py-3 px-6 md:py-4 md:px-10 flex items-center gap-4 md:gap-6 animate-in fade-in zoom-in duration-300 pointer-events-auto">
+    { /*py（上下）と px（左右）を md 以上で少し削ります */ }
+    /*<div className="bg-white/95 backdrop-blur-md border border-gray-100 shadow-2xl rounded-full py-3 px-6 md:py-4 md:px-10 flex items-center gap-4 md:gap-6 animate-in fade-in zoom-in duration-300 pointer-events-auto">
       
       {/* 画像は存在感を出しつつ、少しだけ枠を絞る */}
-      <div className="flex-shrink-0 w-16 h-16 md:w-24 md:h-24 flex items-center justify-center">
+      /*<div className="flex-shrink-0 w-16 h-16 md:w-24 md:h-24 flex items-center justify-center">
         <Image 
           src="/care-robot.png" 
           alt="Robot" 
@@ -51,7 +52,7 @@ toast.custom((t) => (
       
       <div className="flex flex-col justify-center min-w-0 pr-2">
         {/* 文字サイズも少し下げて余白とのバランスを調整 */}
-        <p className="text-[14px] md:text-[18px] font-bold text-black leading-tight mb-0.5 md:mb-1 whitespace-nowrap">
+        /*<p className="text-[14px] md:text-[18px] font-bold text-black leading-tight mb-0.5 md:mb-1 whitespace-nowrap">
           それを伝えたら彼は本当に喜ぶでしょうか？
         </p>
         <p className="text-[11px] md:text-[14px] text-gray-500 font-medium leading-tight">
@@ -69,7 +70,8 @@ toast.custom((t) => (
       </button>
     </div>
   </div>
-), { duration: Infinity });
+),{ duration: Infinity });
+
 
       } else {
         setContent('')
@@ -84,7 +86,7 @@ toast.custom((t) => (
     setErrorData(null)
     toast.dismiss()
   }
-
+*/
   const handleSuggestionClick = (suggestedText: string) => {
     setContent(suggestedText)
     setErrorData(null)

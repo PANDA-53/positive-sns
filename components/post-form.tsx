@@ -29,7 +29,7 @@ export default function PostForm() {
   const suggestionsRaw = searchParams.get('suggestions')
   const suggestions: string[] = suggestionsRaw ? JSON.parse(suggestionsRaw) : []
 
-  useEffect(() => {
+  /*useEffect(() => {
     if (isToxic) {
       if (!toastIdRef.current) {
         toastIdRef.current = toast.custom((t) => (
@@ -57,7 +57,7 @@ export default function PostForm() {
       toast.dismiss(toastIdRef.current)
       toastIdRef.current = null
     }
-  }, [isToxic, reason])
+  }, [isToxic, reason])*/
 
   const handleSuggestionClick = (suggestedText: string) => {
     setContent(suggestedText)
