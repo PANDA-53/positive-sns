@@ -17,6 +17,7 @@ const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 async function PostListContent({ user }: { user: any }) {
   const supabase = await createClient()
   
+  // RLSが設定されていれば、これだけで「自分が見れる投稿」のみが返ってきます
   const [postsRes, friendshipsRes] = await Promise.all([
     supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
     supabase.from('friendships').select('*').or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
@@ -120,7 +121,22 @@ async function PostListContent({ user }: { user: any }) {
               <Link href={`/users/${post.user_id}`} className="flex items-center gap-3 hover:opacity-70 transition-opacity">
                 <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover" alt="" />
                 <div className="flex flex-col text-black">
-                  <span className="text-sm font-bold">{post.authorProfile?.full_name || '匿名'}</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-sm font-bold">{post.authorProfile?.full_name || '匿名'}</span>
+                    {/* 友達限定投稿には鍵アイコンを表示 (修正済み) */}
+                    {post.privacy_level === 'friends' && (
+                      <svg 
+                        xmlns="http://www.w3.org/2000/svg" 
+                        viewBox="0 0 20 20" 
+                        fill="currentColor" 
+                        className="w-3 h-3 text-blue-500" 
+                        aria-label="友達限定"
+                      >
+                        <title>友達限定</title>
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </div>
                   <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
                 </div>
               </Link>
@@ -154,7 +170,6 @@ async function PostListContent({ user }: { user: any }) {
             <div className="flex items-center justify-between mb-4">
               <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
               
-              {/* 投稿に対する通報ボタン */}
               {post.user_id !== user.id && (
                 <ReportButton postId={post.id} />
               )}
@@ -170,7 +185,6 @@ async function PostListContent({ user }: { user: any }) {
                         {reply.authorProfile?.full_name || '匿名'}
                       </Link>
                       
-                      {/* 返信に対する通報ボタン（ホバーで表示） */}
                       {reply.user_id !== user.id && (
                         <div className="opacity-0 group-hover/reply:opacity-100 transition-opacity">
                           <ReportButton postId={reply.id} />

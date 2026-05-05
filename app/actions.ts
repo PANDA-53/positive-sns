@@ -19,8 +19,7 @@ async function checkAndSuggestContent(content: string) {
       messages: [
         {
           role: "system",
-
-content: `あなたはSNS「POSITIVES」のモデレーター兼、優秀なリライトエディターです。以下の厳格な基準に従って投稿を判定し、不適切な場合はユーザーを導いてください。
+          content: `あなたはSNS「POSITIVES」のモデレーター兼、優秀なリライトエディターです。以下の厳格な基準に従って投稿を判定し、不適切な場合はユーザーを導いてください。
 
 【TOXIC（投稿禁止）】
 ・他者への誹謗中傷、攻撃的発言、差別、偏見、尊厳を傷つける内容
@@ -79,12 +78,13 @@ NG | 強い怒りや攻撃的な表現が含まれています | 昨日の会議
   }
 }
 
-// --- 投稿作成 (動画対応版) ---
+// --- 投稿作成 (動画・公開範囲対応版) ---
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const imageFile = formData.get('image') as File | null;
-  const videoFile = formData.get('video') as File | null; // 動画ファイルを取得
+  const videoFile = formData.get('video') as File | null;
+  const privacyLevel = (formData.get('privacy_level') as string) || 'public'; // 公開範囲を取得
   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect('/login');
@@ -110,7 +110,7 @@ export async function createPost(formData: FormData) {
     }
   }
 
-  // 画像のアップロード処理 (動画がない場合、または両方許可する場合)
+  // 画像のアップロード処理
   if (!videoUrl && imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
     const fileExt = imageFile.name.split('.').pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
@@ -122,12 +122,13 @@ export async function createPost(formData: FormData) {
     }
   }
 
-  // DB保存 (video_urlを追加)
+  // DB保存 (privacy_levelを追加)
   await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
     image_url: imageUrl,
-    video_url: videoUrl 
+    video_url: videoUrl,
+    privacy_level: privacyLevel 
   });
 
   revalidatePath('/');
@@ -247,6 +248,7 @@ export async function updateProfile(formData: FormData) {
   revalidatePath('/', 'layout');
   redirect(`/users/${user.id}`);
 }
+
 export async function reportPost(postId: number) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -259,7 +261,7 @@ export async function reportPost(postId: number) {
   });
 
   if (error) {
-    if (error.code === '23505') { // ユニーク制約エラー
+    if (error.code === '23505') {
       return { success: false, message: "既に報告済みです" };
     }
     return { success: false, message: "エラーが発生しました" };

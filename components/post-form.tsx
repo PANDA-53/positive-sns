@@ -18,46 +18,17 @@ export default function PostForm() {
   const [content, setContent] = useState('')
   const [isCompressing, setIsCompressing] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-  const [isVideo, setIsVideo] = useState(false) 
+  const [isVideo, setIsVideo] = useState(false)
+  // 公開範囲の状態管理
+  const [privacyLevel, setPrivacyLevel] = useState<'public' | 'friends'>('public')
+  
   const searchParams = useSearchParams()
   const router = useRouter()
-  const toastIdRef = useRef<string | number | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const isToxic = searchParams.get('error') === 'toxic-content'
-  const reason = searchParams.get('reason')
   const suggestionsRaw = searchParams.get('suggestions')
   const suggestions: string[] = suggestionsRaw ? JSON.parse(suggestionsRaw) : []
-
-  /*useEffect(() => {
-    if (isToxic) {
-      if (!toastIdRef.current) {
-        toastIdRef.current = toast.custom((t) => (
-          <div className="bg-white/95 backdrop-blur-md border border-gray-100 shadow-2xl rounded-full py-4 px-8 flex items-center gap-4 w-auto max-w-[95vw]">
-            <div className="flex-shrink-0">
-              <Image src="/care-robot.png" alt="Care Robot" width={56} height={56} className="object-contain" priority />
-            </div>
-            <div className="flex flex-col justify-center min-w-0 pr-10">
-              <p className="text-[16px] font-bold text-gray-800 leading-tight mb-1 whitespace-nowrap">
-                それを投稿したら貴方は笑顔になりますか？
-              </p>
-              <p className="text-[13px] text-gray-500 leading-tight whitespace-nowrap">
-                {reason || "誰かが傷つく内容は、お伝えできません。"}
-              </p>
-            </div>
-            <button onClick={() => toast.dismiss(t)} className="ml-auto text-gray-400 hover:text-gray-600 p-2 flex-shrink-0 transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        ), { duration: Infinity })
-      }
-    } else if (toastIdRef.current) {
-      toast.dismiss(toastIdRef.current)
-      toastIdRef.current = null
-    }
-  }, [isToxic, reason])*/
 
   const handleSuggestionClick = (suggestedText: string) => {
     setContent(suggestedText)
@@ -94,6 +65,7 @@ export default function PostForm() {
     setContent('')
     setPreviewUrl(null)
     setIsVideo(false)
+    setPrivacyLevel('public')
     if (previewUrl) URL.revokeObjectURL(previewUrl)
     if (fileInputRef.current) fileInputRef.current.value = ""
     router.push('/')
@@ -105,7 +77,6 @@ export default function PostForm() {
     try {
       const formData = new FormData(e.currentTarget)
       
-      // 画像かつ1MB以上の場合のみ圧縮を実行（動画の場合はスキップ）
       if (!isVideo) {
         const imageFile = formData.get('image') as File
         if (imageFile && imageFile.size > 1024 * 1024) {
@@ -148,7 +119,6 @@ export default function PostForm() {
       {isToxic && suggestions.length > 0 && (
         <div className="bg-gradient-to-br from-green-50 to-white border-2 border-green-100 p-6 rounded-[2.5rem] shadow-xl animate-in fade-in slide-in-from-top-4 duration-500">
           <div className="flex items-center gap-2 mb-4">
-            
             <p className="text-sm font-black text-green-800 uppercase tracking-wider">Positive Magic</p>
           </div>
           <div className="flex flex-col gap-3">
@@ -170,7 +140,6 @@ export default function PostForm() {
       )}
 
       <form id="post-form" onSubmit={handleSubmit} className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-gray-100 transition-all">
-        {/* text-sm を text-base に変更してズームを防止 */}
         <textarea 
           name="content" 
           value={content}
@@ -186,18 +155,9 @@ export default function PostForm() {
         {previewUrl && (
           <div className="relative mt-4 rounded-2xl overflow-hidden border border-gray-100 bg-black max-h-[500px] flex items-center justify-center">
             {isVideo ? (
-              <video 
-                src={previewUrl} 
-                className="w-full h-auto max-h-[500px] object-contain" 
-                controls 
-                muted 
-              />
+              <video src={previewUrl} className="w-full h-auto max-h-[500px] object-contain" controls muted />
             ) : (
-              <img 
-                src={previewUrl} 
-                alt="Preview" 
-                className="w-full h-auto max-h-[500px] object-contain" 
-              />
+              <img src={previewUrl} alt="Preview" className="w-full h-auto max-h-[500px] object-contain" />
             )}
             <button 
               type="button" 
@@ -213,32 +173,53 @@ export default function PostForm() {
           </div>
         )}
 
-        <div className="flex justify-between items-center mt-6">
-          <div className="flex items-center gap-4">
-            <label className="cursor-pointer p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-6">
+          <div className="flex items-center gap-3">
+            {/* メディア選択ボタン */}
+            <label className="cursor-pointer p-3 bg-gray-50 hover:bg-gray-100 rounded-2xl transition-all flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6 text-gray-500">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375 0 11-.75 0 .375.375 0 01.75 0z" />
               </svg>
-              <span className="text-[10px] font-bold text-gray-400">Media</span>
-              <input 
-                ref={fileInputRef}
-                type="file" 
-                name={isVideo ? "video" : "image"} 
-                accept="image/*,video/*" 
-                className="hidden" 
-                onChange={handleFileChange} 
-              />
+              <input ref={fileInputRef} type="file" name={isVideo ? "video" : "image"} accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
             </label>
+
+            {/* スライド式プライバシー・スイッチ */}
+            <div className="flex items-center gap-2">
+              <div 
+                onClick={() => setPrivacyLevel(prev => prev === 'public' ? 'friends' : 'public')}
+                className="relative w-20 h-10 bg-gray-100 rounded-full p-1 cursor-pointer select-none transition-all"
+              >
+                {/* スライダー（白い丸） */}
+                <div 
+                  className={`absolute top-1 bottom-1 w-8 rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
+                    privacyLevel === 'public' ? 'left-1 bg-green-500' : 'left-[44px] bg-blue-500'
+                  }`}
+                >
+                  {privacyLevel === 'public' ? (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-white">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
+                    </svg>
+                  ) : (
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-white">
+                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                    </svg>
+                  )}
+                </div>
+              </div>
+              <span className={`text-[10px] font-black uppercase tracking-widest w-12 transition-colors ${privacyLevel === 'public' ? 'text-green-600' : 'text-blue-600'}`}>
+                {privacyLevel === 'public' ? 'Public' : 'Friends'}
+              </span>
+              <input type="hidden" name="privacy_level" value={privacyLevel} />
+            </div>
+
             <button type="button" onClick={handleCancel} className="text-[10px] font-black text-gray-300 hover:text-gray-600 transition-colors uppercase tracking-widest">RESET</button>
           </div>
 
           <button 
             type="submit" 
             disabled={isCompressing}
-            className={`font-black text-xs py-4 px-10 rounded-full shadow-lg transition-all tracking-widest uppercase ${
-              isToxic 
-                ? "bg-amber-500 text-white hover:bg-amber-600" 
-                : "bg-black text-white hover:bg-gray-800 active:scale-95 shadow-black/10"
+            className={`w-full sm:w-auto font-black text-xs py-4 px-10 rounded-full shadow-lg transition-all tracking-widest uppercase ${
+              isToxic ? "bg-amber-500 text-white hover:bg-amber-600" : "bg-black text-white hover:bg-gray-800 active:scale-95"
             }`}
           >
             {isCompressing ? "Sending..." : isToxic ? "Rewrite" : "Share"}
