@@ -10,6 +10,40 @@ const openai = new OpenAI({
 });
 
 /**
+ * 【最小追加】NGワード辞書による高速チェック
+ */
+async function checkNgWords(content: string) {
+  const supabase = await createClient();
+  const { data: ngWords } = await supabase.from('ng_words').select('word');
+  const found = ngWords?.find(item => content.includes(item.word));
+  if (found) {
+    return { 
+      isToxic: true, 
+      reason: "コミュニティ規定により、その言葉は使用できません。", 
+      suggestions: ["もっと優しい言葉に変えてみませんか？"] 
+    };
+  }
+  return null;
+}
+
+/**
+ * 【最小追加】学習ループ用：通報などからNGワードを登録する関数
+ */
+export async function addToNgWords(word: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false };
+
+  // 管理者チェック（profilesテーブルのis_adminカラムを参照）
+  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single();
+  if (!profile?.is_admin) return { success: false, message: "権限がありません" };
+
+  await supabase.from('ng_words').insert({ word, created_by: user.id });
+  revalidatePath('/');
+  return { success: true };
+}
+
+/**
  * 【NEW】TanStack Query 用のデータ取得アクション
  * タイムラインに必要な投稿、プロフィール、友達関係、申請状況をすべて整形して返します
  */
@@ -87,6 +121,10 @@ export async function fetchTimelineData(userId: string) {
  * SNS「POSITIVES」モデレーター判定ロジック
  */
 async function checkAndSuggestContent(content: string) {
+  // --- 【最小修正】AIを呼ぶ前に辞書をチェック ---
+  const ngResult = await checkNgWords(content);
+  if (ngResult) return ngResult;
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -308,12 +346,9 @@ export async function cancelFriendship(targetUserId: string) {
   revalidatePath('/');
 }
 
-// app/actions.ts
-
 export async function fetchUserProfileData(targetUserId: string, currentUserId: string) {
   const supabase = await createClient();
 
-  // 1. プロフィールと投稿、フレンド関係を並列で取得
   const [profileRes, postsRes, friendshipsRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', targetUserId).single(),
     supabase.from('posts').select(`*, reactions (type, user_id)`).eq('user_id', targetUserId).order('created_at', { ascending: false }),
@@ -324,7 +359,6 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   const posts = postsRes.data || [];
   const friendshipsRaw = friendshipsRes.data || [];
 
-  // 2. リアクションやフレンド状態の整形
   const formattedPosts = posts.map(post => {
     const reactions = post.reactions || [];
     const relation = friendshipsRaw.find(f => 
@@ -334,11 +368,10 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
     
     return {
       ...post,
-      authorProfile: profile, // 自分のページなのでプロフィールは同一
+      authorProfile: profile,
       awesomeCount: reactions.filter((r: any) => r.type === 'awesome').length,
       hugCount: reactions.filter((r: any) => r.type === 'hug').length,
       myReaction: reactions.find((r: any) => r.user_id === currentUserId)?.type || null,
-      
       friendStatus: targetUserId === currentUserId ? 'me' : (relation?.status || 'none')
     };
   });
@@ -347,7 +380,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
     profile,
     mainPosts: formattedPosts.filter(p => !p.parent_id),
     replies: formattedPosts.filter(p => p.parent_id),
-    isMe: targetUserId === currentUserId, // ★ これを追加！
+    isMe: targetUserId === currentUserId,
     defaultAvatar: "https://www.gravatar.com/avatar/?d=mp"
   };
 }

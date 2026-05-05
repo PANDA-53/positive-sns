@@ -12,9 +12,39 @@ import ReplyForm from '../components/ReplyForm'
 import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
 
+// --- 返信セクション（折りたたみ制御） ---
+function ReplySection({ postId }: { postId: string }) {
+  const [isReplying, setIsReplying] = useState(false)
+
+  return (
+    <div className="mt-2">
+      {!isReplying ? (
+        <button 
+          onClick={() => setIsReplying(true)}
+          className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 hover:text-blue-500 transition-colors px-1 py-1"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 0 1-.923 1.785c-.442.496.057 1.285.738 1.065 2.138-.691 4.453-1.213 6.326-1.422.05-.005.103-.008.156-.008Z" />
+          </svg>
+          返信する...
+        </button>
+      ) : (
+        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+          <ReplyForm parentId={postId} />
+          <button 
+            onClick={() => setIsReplying(false)}
+            className="text-[9px] font-bold text-gray-300 hover:text-gray-500 px-2 transition-colors"
+          >
+            キャンセル
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // --- データ表示用コンポーネント ---
 function PostListContent({ user }: { user: any }) {
-  // 1. フィルター状態を管理
   const [filterMode, setFilterMode] = useState<'all' | 'friends'>('all');
 
   const { data, isLoading, isError, refetch } = useQuery({
@@ -44,7 +74,6 @@ function PostListContent({ user }: { user: any }) {
 
   const { mainPosts, replies, pendingRequests, acceptedFriends, defaultAvatar } = data
 
-  // 2. フィルター処理
   const friendIds = new Set([user.id, ...acceptedFriends.map((f: any) => f.id)]);
   const filteredPosts = mainPosts.filter((post: any) => {
     if (filterMode === 'all') return true;
@@ -95,7 +124,7 @@ function PostListContent({ user }: { user: any }) {
       {/* 投稿フォーム */}
       <section><PostForm /></section>
 
-      {/* 3. 切り替えスイッチ */}
+      {/* 切り替えスイッチ */}
       <div className="flex justify-center py-2">
         <div className="bg-gray-200/50 p-1 rounded-2xl flex gap-1 border border-white shadow-sm">
           <button 
@@ -104,7 +133,7 @@ function PostListContent({ user }: { user: any }) {
               filterMode === 'all' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400 hover:text-green-600'  
             }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-current">
               <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
             </svg>
             PUBLIC
@@ -115,7 +144,7 @@ function PostListContent({ user }: { user: any }) {
               filterMode === 'friends' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
             }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-current">
               <path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.615 16.428a1.224 1.224 0 01-.569-1.175 6.002 6.002 0 0110.908-2.677 5.18 5.18 0 00-1.213 2.533 1.72 1.72 0 00.453 1.41c.674.674 1.745.674 2.419 0a1.72 1.72 0 00.453-1.41 5.18 5.18 0 00-1.213-2.533 6.003 6.003 0 013.871 3.314c.081.27-.047.551-.27.706A5.978 5.978 0 0110 18a5.978 5.978 0 01-5.615-1.572z" />
             </svg>
             FRIENDS
@@ -156,6 +185,7 @@ function PostListContent({ user }: { user: any }) {
                   )}
                 </div>
               </div>
+              
               <p className="text-[15px] text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
               
               {post.video_url ? (
@@ -173,21 +203,33 @@ function PostListContent({ user }: { user: any }) {
                 {post.user_id !== user.id && <ReportButton postId={post.id} />}
               </div>
               
-              {replies.some((r: any) => r.parent_id === post.id) && (
-                <div className="ml-6 mt-4 space-y-2 border-l-2 border-gray-50 pl-4 mb-4">
-                  {replies.filter((r: any) => r.parent_id === post.id).map((reply: any) => (
-                    <div key={reply.id} className="bg-gray-50/50 p-2.5 rounded-xl group/reply relative">
-                      <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-500 block text-[10px] hover:underline">
-                        {reply.authorProfile?.full_name || '匿名'}
-                      </Link>
-                      <span className="text-gray-700 text-xs leading-normal">{reply.content}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="mt-2">
-                <ReplyForm parentId={post.id} />
-              </div>
+              
+
+{/* 返信一覧 */}
+{replies.some((r: any) => r.parent_id === post.id) && (
+  <div className="ml-6 mt-4 space-y-2 border-l-2 border-gray-50 pl-4 mb-2">
+    {replies.filter((r: any) => r.parent_id === post.id).map((reply: any) => (
+      <div key={reply.id} className="bg-gray-50/50 p-3 rounded-xl group/reply relative transition-all hover:bg-gray-100/50">
+        <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-500 block text-[10px] hover:underline mb-0.5">
+          {reply.authorProfile?.full_name || '匿名'}
+        </Link>
+        <span className="text-gray-700 text-xs leading-normal block mb-2">{reply.content}</span>
+
+        {/* ★ 返信用の通報ボタンをここに追加 */}
+        <div className="flex justify-end pt-1 border-t border-gray-100/50">
+          {reply.user_id !== user.id && (
+            <ReportButton postId={reply.id} />
+          )}
+        </div>
+      </div>
+    ))}
+  </div>
+)}
+
+
+
+              {/* ★ 折りたたみ返信フォーム */}
+              <ReplySection postId={post.id} />
             </div>
           ))
         ) : (
