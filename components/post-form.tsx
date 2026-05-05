@@ -34,6 +34,14 @@ export default function PostForm({ parentId }: PostFormProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isReply = !!parentId;
 
+  // ★ 修正点：リセット処理を共通化
+  const handleReset = () => {
+    setContent('')
+    setPreviewUrl(null)
+    setToxicInfo({ isToxic: false, suggestions: [] }) // ここで警告を消す
+    if (fileInputRef.current) fileInputRef.current.value = ""
+  }
+
   const handleSuggestionClick = (suggestedText: string) => {
     setContent(suggestedText)
     setToxicInfo({ isToxic: false, suggestions: [] })
@@ -47,7 +55,6 @@ export default function PostForm({ parentId }: PostFormProps) {
       const formData = new FormData(e.currentTarget)
       if (parentId) formData.append('parent_id', parentId.toString());
 
-      // 画像圧縮処理（必要に応じて）
       if (!isVideo) {
         const imageFile = formData.get('image') as File
         if (imageFile && imageFile.size > 1024 * 1024) {
@@ -61,15 +68,12 @@ export default function PostForm({ parentId }: PostFormProps) {
 
       if (result && result.isToxic) {
         setToxicInfo({ isToxic: true, suggestions: result.suggestions || [] })
-        toast.warning('もう少し優しい言葉にしてみませんか？')
+        toast.warning('その言葉を伝えたら、貴方は笑顔になれますか')
         return
       }
 
       // 成功時のリセット
-      setContent('')
-      setPreviewUrl(null)
-      setToxicInfo({ isToxic: false, suggestions: [] })
-      if (fileInputRef.current) fileInputRef.current.value = ""
+      handleReset()
       
       toast.success(isReply ? '返信しました！' : '投稿しました！')
       router.refresh() 
@@ -83,7 +87,7 @@ export default function PostForm({ parentId }: PostFormProps) {
 
   return (
     <div className="space-y-3">
-      {/* 1. AIアドバイス表示（手元に表示） */}
+      {/* 1. AIアドバイス表示 */}
       {toxicInfo.isToxic && (
         <div className="bg-gradient-to-br from-amber-50 to-white border-2 border-amber-100 p-4 rounded-[1.2rem] shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
           <p className="text-[10px] font-black text-amber-800 uppercase tracking-widest mb-3 flex items-center gap-2">
@@ -126,15 +130,13 @@ export default function PostForm({ parentId }: PostFormProps) {
 
         <div className="flex flex-row justify-between items-center gap-3 mt-3">
           <div className="flex items-center gap-3">
-            {/* メディア選択 */}
             <label className="cursor-pointer p-2 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-500">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375 0 11-.75 0 .375.375 0 01.75 0z" />
               </svg>
-              <input ref={fileInputRef} type="file" name={isVideo ? "video" : "image"} accept="image/*,video/*" className="hidden" onChange={(e) => {/* 省略 */}} />
+              <input ref={fileInputRef} type="file" name={isVideo ? "video" : "image"} accept="image/*,video/*" className="hidden" />
             </label>
 
-            {/* ★ 復活：公開範囲スイッチ（リプライ時は表示しない） ★ */}
             {!isReply && (
               <div className="flex items-center gap-2">
                 <div 
@@ -159,7 +161,14 @@ export default function PostForm({ parentId }: PostFormProps) {
               </div>
             )}
 
-            <button type="button" onClick={() => setContent('')} className="text-[9px] font-black text-gray-300 hover:text-gray-600 transition-colors uppercase tracking-widest">RESET</button>
+            {/* RESETボタンをクリックした際に handleReset を呼ぶように修正 */}
+            <button 
+              type="button" 
+              onClick={handleReset} 
+              className="text-[9px] font-black text-gray-300 hover:text-gray-600 transition-colors uppercase tracking-widest"
+            >
+              RESET
+            </button>
           </div>
 
           <button 
