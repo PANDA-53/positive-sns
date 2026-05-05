@@ -172,7 +172,7 @@ export async function createPost(formData: FormData) {
   const content = formData.get('content') as string;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
   
-  // 画像と動画の両方を FormData から取得
+  // PostFormの修正に合わせ、両方 'image' という名前で来る可能性も考慮して取得
   const imageFile = formData.get('image') as File | null;
   const videoFile = formData.get('video') as File | null;
   
@@ -186,9 +186,12 @@ export async function createPost(formData: FormData) {
   let imageUrl = null;
   let videoUrl = null;
 
-  // 画像アップロード処理
-  if (imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
-    const fileExt = imageFile.name.split('.').pop();
+  // --- 画像アップロード処理 ---
+  // name !== 'undefined' のチェックを外し、ファイルが存在するかどうかで判定
+  if (imageFile && imageFile.size > 0) {
+    // 圧縮などで名前が消えている場合に備え、デフォルトの拡張子を fallback
+    const rawName = imageFile.name || "";
+    const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'jpg';
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
     
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -201,13 +204,14 @@ export async function createPost(formData: FormData) {
         .getPublicUrl(fileName);
       imageUrl = publicUrl;
     } else {
-      console.error("Image upload error:", uploadError.message);
+      console.error("Image upload error details:", uploadError);
     }
   }
 
-  // 動画アップロード処理 (追加)
-  if (videoFile && videoFile.size > 0 && videoFile.name !== 'undefined') {
-    const fileExt = videoFile.name.split('.').pop();
+  // --- 動画アップロード処理 ---
+  if (videoFile && videoFile.size > 0) {
+    const rawName = videoFile.name || "";
+    const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'mp4';
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
     
     const { data: uploadData, error: uploadError } = await supabase.storage
@@ -220,11 +224,11 @@ export async function createPost(formData: FormData) {
         .getPublicUrl(fileName);
       videoUrl = publicUrl;
     } else {
-      console.error("Video upload error:", uploadError.message);
+      console.error("Video upload error details:", uploadError);
     }
   }
 
-  // データベースへの挿入 (image_url と video_url の両方を指定)
+  // データベースへの挿入
   const { error: insertError } = await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
@@ -235,12 +239,12 @@ export async function createPost(formData: FormData) {
 
   if (insertError) {
     console.error("Database insert error:", insertError.message);
-    return { isToxic: false, error: "保存に失敗しました" };
+    return { isToxic: false, error: "DB保存失敗" };
   }
 
   revalidatePath('/');
   revalidatePath(`/users/${user.id}`);
-  return { isToxic: false };
+  return { isToxic: false, success: true };
 }
 
 export async function createReply(formData: FormData) {
