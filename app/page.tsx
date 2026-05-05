@@ -10,6 +10,7 @@ import PostForm from '../components/post-form'
 import ReplyForm from '../components/ReplyForm'
 import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
+import { redirect } from 'next/navigation'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
@@ -145,13 +146,15 @@ async function PostListContent({ user }: { user: any }) {
             </div>
             <p className="text-[15px] text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
             
+            {/* 動画表示：高さ制限を外し、横幅いっぱいに */}
             {post.video_url ? (
-              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black max-h-[400px] flex items-center justify-center">
-                <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto max-h-[400px] object-contain" />
+              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
+                <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto block" />
               </div>
             ) : post.image_url && (
-              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 max-h-[400px] flex items-center justify-center">
-                <img src={post.image_url} alt="" className="w-full h-auto object-contain max-h-[400px]" />
+              /* 画像表示：高さ制限を外し、横幅いっぱいに（余白解消） */
+              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
+                <img src={post.image_url} alt="" className="w-full h-auto block" />
               </div>
             )}
 
@@ -188,11 +191,15 @@ export default async function Index() {
   const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
   const user = userData?.user
 
-  let currentUserProfile = null;
-  if (user) {
-    const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single();
-    currentUserProfile = data;
+  // ★ 未ログインならログイン画面へ強制リダイレクト
+  if (!user) {
+    redirect('/login')
   }
+
+  // 以下、ログイン済みの処理
+  let currentUserProfile = null;
+  const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single();
+  currentUserProfile = data;
 
   return (
     <main className="min-h-screen bg-[#F2F2F2] text-black pb-12 font-sans">
@@ -200,70 +207,54 @@ export default async function Index() {
         <div className="max-w-2xl mx-auto px-4 h-14 flex justify-between items-center">
           {/* ロゴエリア */}
           <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 bg-black rounded-xl flex items-center justify-center transition-transform group-active:scale-95">
-              <span className="text-white font-black text-lg">P</span>
-            </div>
-            <h1 className="text-lg font-black tracking-tighter italic hidden sm:block">POSITIVES</h1>
+            <h1 className="text-lg font-black tracking-tighter">POSITIVES</h1>
           </Link>
 
           {/* アクションエリア */}
           <div className="flex items-center gap-2">
-            {user ? (
-              <>
-                {/* 検索ボタンを追加 */}
-                <Link 
-                  href="/search" 
-                  className="p-2 text-gray-400 hover:text-black transition-colors rounded-xl hover:bg-gray-100"
-                  aria-label="検索"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                  </svg>
-                </Link>
+            {/* 検索ボタン */}
+            <Link 
+              href="/search" 
+              className="p-2 text-gray-400 hover:text-black transition-colors rounded-xl hover:bg-gray-100"
+              aria-label="検索"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+            </Link>
 
-                <Link href={`/users/${user.id}`} className="p-1">
-                  <img 
-                    src={currentUserProfile?.avatar_url || defaultAvatar} 
-                    className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm transition-transform active:scale-90" 
-                    alt="My Profile" 
-                  />
-                </Link>
+            <Link href={`/users/${user.id}`} className="p-1">
+              <img 
+                src={currentUserProfile?.avatar_url || defaultAvatar} 
+                className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm transition-transform active:scale-90" 
+                alt="My Profile" 
+              />
+            </Link>
 
-                <Link href="/profile" className="text-[10px] font-black text-gray-400 hover:text-gray-900 px-2 py-1 transition-colors uppercase tracking-widest">
-                  Settings
-                </Link>
+            <Link href="/profile" className="text-[10px] font-black text-gray-400 hover:text-gray-900 px-2 py-1 transition-colors uppercase tracking-widest">
+              設定
+            </Link>
 
-                <form action={logout}>
-                  <button className="text-[10px] font-black text-red-300 hover:text-red-500 px-2 py-1 transition-colors uppercase tracking-widest">
-                    Logout
-                  </button>
-                </form>
-              </>
-            ) : (
-              <Link href="/login" className="text-xs bg-black text-white px-5 py-2 rounded-full font-bold">LOGIN</Link>
-            )}
+            <form action={logout}>
+              <button className="text-[10px] font-black text-gray-300 hover:text-red-500 px-2 py-1 transition-colors uppercase tracking-widest">
+                ログアウト
+              </button>
+            </form>
           </div>
         </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 pt-4">
-        {user ? (
-          <PullToRefresh>
-            <Suspense fallback={
-              <div className="animate-pulse space-y-4 w-full max-w-md mx-auto mt-10">
-                <div className="h-32 bg-gray-200 rounded-[1.5rem]"></div>
-                <div className="h-40 bg-gray-200 rounded-[1.5rem]"></div>
-              </div>
-            }>
-              <PostListContent user={user} />
-            </Suspense>
-          </PullToRefresh>
-        ) : (
-          <div className="text-center py-24 bg-white rounded-[2rem] shadow-sm border border-gray-100 mt-10">
-             <h2 className="text-2xl font-black tracking-tighter mb-6 italic">BE POSITIVE.</h2>
-             <Link href="/login" className="bg-black text-white px-10 py-4 rounded-full font-black text-xs tracking-widest hover:bg-gray-800 transition-all">START NOW</Link>
-          </div>
-        )}
+        <PullToRefresh>
+          <Suspense fallback={
+            <div className="animate-pulse space-y-4 w-full max-w-md mx-auto mt-10">
+              <div className="h-32 bg-gray-200 rounded-[1.5rem]"></div>
+              <div className="h-40 bg-gray-200 rounded-[1.5rem]"></div>
+            </div>
+          }>
+            <PostListContent user={user} />
+          </Suspense>
+        </PullToRefresh>
       </div>
     </main>
   );

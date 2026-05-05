@@ -66,7 +66,7 @@ function LoginFormInner() {
           placeholder="メールアドレス" 
           inputMode="email" 
           autoComplete="email"
-          className="w-full p-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-black/5 transition-all" 
+          className="w-full p-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-black/5 transition-all text-base" 
           required 
         />
         <input 
@@ -74,7 +74,7 @@ function LoginFormInner() {
           type="password" 
           placeholder="パスワード" 
           autoComplete={isLogin ? "current-password" : "new-password"}
-          className="w-full p-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-black/5 transition-all" 
+          className="w-full p-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-black/5 transition-all text-base" 
           required 
         />
         <SubmitButton isLogin={isLogin} />
@@ -85,14 +85,17 @@ function LoginFormInner() {
 
 export default function LoginPage() {
   return (
-    // min-screen を min-h-screen に修正（画面中央に配置するため）
-    <div className="min-h-screen flex items-center justify-center bg-[#F2F2F2] p-4">
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-xl w-full max-w-md border border-gray-100">
-        
-        
+    /* items-centerを外し、flex-colとpt-20を追加して上部配置へ */
+    <div className="min-h-screen flex flex-col items-center bg-[#F2F2F2] p-6 pt-20">
+      {/* アプリロゴなどを置くスペースを考慮し、カードの角丸も他の画面と統一（1.5rem） */}
+      <div className="bg-white p-8 rounded-[1.5rem] shadow-sm border border-gray-100 w-full max-w-md">
+        <div className="mb-8 text-center">
+           <h1 className="text-2xl font-black tracking-tighter">POSITIVES</h1>
+           <p className="text-[10px] font-black text-gray-600 uppercase tracking-widest mt-1">Welcome</p>
+        </div>
 
         <div>
-          <Suspense fallback={<div className="text-center text-gray-400 py-10">読み込み中...</div>}>
+          <Suspense fallback={<div className="text-center text-gray-400 py-10 text-xs">読み込み中...</div>}>
             <LoginFormInner />
           </Suspense>
         </div>

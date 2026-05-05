@@ -125,7 +125,7 @@ export default async function UserProfilePage({ params }: { params: Promise<{ id
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center">
           <Link href="/" className="flex items-center gap-2 text-[11px] font-black text-gray-400 hover:text-black transition-colors uppercase tracking-widest">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className="w-3 h-3"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" /></svg>
-            <span>Back</span>
+            <span></span>
           </Link>
         </div>
       </nav>
