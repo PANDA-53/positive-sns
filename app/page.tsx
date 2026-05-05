@@ -1,11 +1,11 @@
 export const dynamic = 'force-dynamic';
 
 import { createClient } from '../utils/supabase/server'
-import { logout, acceptFriendRequest, deletePost, reportPost } from './actions' // reportPostを追加
+import { logout, acceptFriendRequest, deletePost, reportPost } from './actions'
 import { Suspense } from 'react'
 import { ReactionButtons } from '../components/reaction-buttons'
 import { FriendButton } from '../components/friend-button'
-import { ReportButton } from '../components/report-button' // ReportButtonをインポート
+import { ReportButton } from '../components/report-button'
 import PostForm from '../components/post-form'
 import ReplyForm from '../components/ReplyForm'
 import Link from 'next/link'
@@ -69,7 +69,7 @@ async function PostListContent({ user }: { user: any }) {
 
   return (
     <div className="space-y-8">
-      {/* 友達一覧 (省略なし) */}
+      {/* 友達一覧 */}
       <section className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Friends</h3>
         <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
@@ -88,7 +88,7 @@ async function PostListContent({ user }: { user: any }) {
         </div>
       </section>
 
-      {/* 申請リスト (省略なし) */}
+      {/* 申請リスト */}
       {pendingRequests.length > 0 && (
         <section className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-6 rounded-[2.5rem] shadow-lg">
           <h3 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-4 px-2">申請が届いています</h3>
@@ -139,6 +139,7 @@ async function PostListContent({ user }: { user: any }) {
             </div>
             <p className="text-base text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
             
+            {/* 動画/画像表示 */}
             {post.video_url ? (
               <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-black max-h-[500px] flex items-center justify-center">
                 <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto max-h-[500px] object-contain" />
@@ -150,21 +151,33 @@ async function PostListContent({ user }: { user: any }) {
             )}
 
             {/* アクションエリア */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between mb-4">
               <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
               
-              {/* 通報ボタン：自分の投稿以外に表示 */}
+              {/* 投稿に対する通報ボタン */}
               {post.user_id !== user.id && (
                 <ReportButton postId={post.id} />
               )}
             </div>
             
+            {/* 返信リスト */}
             {replies.some(r => r.parent_id === post.id) && (
               <div className="ml-8 mt-6 space-y-4 border-l-2 border-gray-100 pl-6 mb-6">
                 {replies.filter(r => r.parent_id === post.id).map(reply => (
-                  <div key={reply.id} className="bg-gray-50 p-3 rounded-2xl">
-                    <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-600 block mb-1 text-xs hover:underline">{reply.authorProfile?.full_name || '匿名'}</Link>
-                    <span className="text-gray-700 text-sm">{reply.content}</span>
+                  <div key={reply.id} className="bg-gray-50 p-4 rounded-2xl group/reply relative transition-colors hover:bg-gray-100">
+                    <div className="flex justify-between items-start mb-1">
+                      <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-600 block text-xs hover:underline">
+                        {reply.authorProfile?.full_name || '匿名'}
+                      </Link>
+                      
+                      {/* 返信に対する通報ボタン（ホバーで表示） */}
+                      {reply.user_id !== user.id && (
+                        <div className="opacity-0 group-hover/reply:opacity-100 transition-opacity">
+                          <ReportButton postId={reply.id} />
+                        </div>
+                      )}
+                    </div>
+                    <span className="text-gray-700 text-sm leading-relaxed">{reply.content}</span>
                   </div>
                 ))}
               </div>
@@ -179,7 +192,7 @@ async function PostListContent({ user }: { user: any }) {
   );
 }
 
-// --- メイン Index コンポーネント (省略なし) ---
+// --- メイン Index コンポーネント ---
 export default async function Index() {
   const supabase = await createClient()
   const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
