@@ -1,71 +1,54 @@
-"use client"
+'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import TimelineSwitch from './TimelineSwitch'
+import React from 'react'
 import { ReactionButtons } from './reaction-buttons'
-import { FriendButton } from './friend-button'
-import { ReportButton } from './report-button'
-import ReplyForm from './ReplyForm'
-import { deletePost } from '@/app/actions'
 
-const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
-
-export default function FilteredTimeline({ mainPosts = [], replies = [], user, friendIds = [] }: any) {
-  const [viewMode, setViewMode] = useState<'friends' | 'public'>('public')
-  const [mounted, setMounted] = useState(false)
-
-  // 日付の表示ズレを防ぐため、マウントされるまで待つ
-  useEffect(() => { setMounted(true) }, [])
-
-  const displayPosts = (mainPosts || []).filter((post: any) => {
-    if (!post) return false;
-    if (viewMode === 'public') return true;
-    return post.user_id === user?.id || (friendIds && friendIds.includes(post.user_id));
+export default function FilteredTimeline({ mainPosts, replies, user, friendIds }: any) {
+  // 表示可能な投稿をフィルタリング
+  const visiblePosts = mainPosts.filter((post: any) => {
+    if (post.privacy_level === 'public') return true;
+    if (post.user_id === user.id) return true;
+    if (post.privacy_level === 'friends' && friendIds?.includes(post.user_id)) return true;
+    return false;
   });
 
-  if (!mounted) return <div className="space-y-4 pt-10"><div className="h-40 bg-white rounded-3xl animate-pulse" /></div>;
-
   return (
-    <>
-      <div className="flex justify-center mb-6">
-        <TimelineSwitch onChange={(mode: any) => setViewMode(mode)} />
-      </div>
-
-      <div className="space-y-3 pb-20">
-        {displayPosts.map((post: any) => (
-          <div key={post.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <Link href={`/users/${post.user_id}`} className="flex items-center gap-2.5">
-                <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-9 h-9 rounded-full object-cover border" alt="" />
-                <div className="flex flex-col text-black">
+    <div className="space-y-4 pb-24">
+      {visiblePosts.length > 0 ? (
+        visiblePosts.map((post: any) => (
+          /* カード外枠：角を大きく丸く(rounded-[1.5rem])、内側に余白(p-5) */
+          <div key={`timeline-${post.id}`} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
+            
+            {/* ヘッダー：アイコンと名前、日付 */}
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <img 
+                  src={post.authorProfile?.avatar_url || "https://www.gravatar.com/avatar/?d=mp"} 
+                  className="w-10 h-10 rounded-full object-cover border border-gray-100" 
+                  alt="" 
+                />
+                <div className="flex flex-col">
+                  <span className="text-[13px] font-bold text-gray-800">{post.authorProfile?.full_name}</span>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold">{post.authorProfile?.full_name}</span>
-                    <span className="text-[10px]">{post.privacy_level === 'friends' ? '🔒' : '🌐'}</span>
+                    <span className="text-[9px] font-bold text-gray-400">
+                      {new Date(post.created_at).toLocaleDateString('ja-JP')}
+                    </span>
+                    {post.privacy_level === 'friends' && (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-blue-500">
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
                   </div>
-                  <span className="text-[9px] font-bold text-gray-400">
-                    {new Date(post.created_at).toLocaleDateString('ja-JP')}
-                  </span>
                 </div>
-              </Link>
-              
-              <div className="flex items-center gap-2">
-                {post.user_id === user?.id ? (
-                  <form action={deletePost}>
-                    <input type="hidden" name="postId" value={post.id} />
-                    <button type="submit" className="text-[10px] text-gray-300 hover:text-red-500 font-bold px-2 py-1">削除</button>
-                  </form>
-                ) : (
-                  <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
-                )}
               </div>
             </div>
+
+            {/* 本文テキスト */}
+            <p className="text-[15px] text-gray-800 mb-4 leading-snug whitespace-pre-wrap">{post.content}</p>
             
-            <p className="text-[15px] font-medium text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
-            
-            {/* FilteredTimeline.tsx 内 */}
-{post.video_url ? (
-              <div className="-mx-5 mb-4 bg-black overflow-hidden border-y border-gray-100 shadow-sm">
+            {/* メディア表示領域：ユーザーページと同じく「枠の内側」で「角丸」にする */}
+            {post.video_url ? (
+              <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
                 <video 
                   src={post.video_url} 
                   controls 
@@ -73,38 +56,35 @@ export default function FilteredTimeline({ mainPosts = [], replies = [], user, f
                   loop 
                   autoPlay 
                   playsInline 
-                  className="w-full h-auto block" // 横幅いっぱいに広げ、操作パネルを表示
+                  className="w-full h-auto block" 
                 />
               </div>
             ) : post.image_url && (
-              <div className="-mx-5 mb-4 bg-gray-50 overflow-hidden border-y border-gray-100 shadow-sm">
+              <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
                 <img 
                   src={post.image_url} 
                   alt="" 
-                  className="w-full h-auto block" // 余計な制限を外して全表示
+                  className="w-full h-auto block" 
                 />
               </div>
             )}
-            <div className="flex items-center justify-between mb-2">
-              <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
-              {post.user_id !== user?.id && <ReportButton postId={post.id} />}
-            </div>
-            
-            {replies.some((r: any) => r.parent_id === post.id) && (
-              <div className="ml-4 mt-4 space-y-2 border-l-2 border-gray-100 pl-4 mb-4">
-                {replies.filter((r: any) => r.parent_id === post.id).map((reply: any) => (
-                  <div key={reply.id} className="bg-gray-50 p-3 rounded-xl">
-                    <span className="font-bold text-[9px] text-gray-400 uppercase">{reply.authorProfile?.full_name}</span>
-                    <p className="text-gray-700 text-xs font-medium">{reply.content}</p>
-                  </div>
-                ))}
-              </div>
-            )}
 
-            <div className="mt-2"><ReplyForm parentId={post.id} /></div>
+            {/* リアクションボタン */}
+            <div className="flex items-center">
+              <ReactionButtons 
+                postId={post.id} 
+                awesomeCount={post.awesomeCount}
+                hugCount={post.hugCount}
+                initialMyReaction={post.myReaction} 
+              />
+            </div>
           </div>
-        ))}
-      </div>
-    </>
+        ))
+      ) : (
+        <div className="text-center py-20 bg-white/50 rounded-[1.5rem] border border-dashed border-gray-300 text-gray-400 text-xs">
+          表示できる投稿がありません
+        </div>
+      )}
+    </div>
   )
 }
