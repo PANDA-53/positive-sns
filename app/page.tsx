@@ -1,9 +1,8 @@
-'use client'
+export const dynamic = 'force-dynamic';
 
-import { createClient } from '../utils/supabase/client'
-import { logout, acceptFriendRequest, deletePost, fetchTimelineData } from './actions'
-import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { createClient } from '../utils/supabase/server'
+import { logout, acceptFriendRequest, deletePost, reportPost } from './actions'
+import { Suspense } from 'react'
 import { ReactionButtons } from '../components/reaction-buttons'
 import { FriendButton } from '../components/friend-button'
 import { ReportButton } from '../components/report-button'
@@ -12,73 +11,90 @@ import ReplyForm from '../components/ReplyForm'
 import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
 
-// --- 返信セクション（折りたたみ制御） ---
-function ReplySection({ postId }: { postId: string }) {
-  const [isReplying, setIsReplying] = useState(false)
+const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
-  return (
-    <div className="mt-2">
-      {!isReplying ? (
-        <button 
-          onClick={() => setIsReplying(true)}
-          className="flex items-center gap-1.5 text-[10px] font-bold text-gray-400 hover:text-blue-500 transition-colors px-1 py-1"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3 h-3">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 0 1-.923 1.785c-.442.496.057 1.285.738 1.065 2.138-.691 4.453-1.213 6.326-1.422.05-.005.103-.008.156-.008Z" />
-          </svg>
-          返信する...
-        </button>
-      ) : (
-        <div className="space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-          <ReplyForm parentId={postId} />
-          <button 
-            onClick={() => setIsReplying(false)}
-            className="text-[9px] font-bold text-gray-300 hover:text-gray-500 px-2 transition-colors"
-          >
-            キャンセル
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
+// --- データ取得・表示用コンポーネント ---
+async function PostListContent({ user }: { user: any }) {
+  const supabase = await createClient()
+  
+  // 1. データの取得
+  const [postsRes, friendshipsRes] = await Promise.all([
+    supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
+    supabase.from('friendships').select('*').or(`user_id.eq.${user.id},friend_id.eq.${user.id}`)
+  ]);
 
-// --- データ表示用コンポーネント ---
-function PostListContent({ user }: { user: any }) {
-  const [filterMode, setFilterMode] = useState<'all' | 'friends'>('all');
-
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['timeline', user?.id],
-    queryFn: () => fetchTimelineData(user?.id),
-    staleTime: 1000 * 60,
-    enabled: !!user?.id,
-  })
-
-  if (isLoading) {
+  if (postsRes.error) {
     return (
-      <div className="animate-pulse space-y-4 w-full max-w-md mx-auto mt-10">
-        <div className="h-32 bg-gray-200 rounded-[1.5rem]"></div>
-        <div className="h-40 bg-gray-200 rounded-[1.5rem]"></div>
+      <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-xs">
+        データの取得に失敗しました: {postsRes.error.message}
       </div>
-    )
+    );
   }
 
-  if (isError || !data) {
-    return (
-      <div className="text-center py-20">
-        <p className="text-gray-500 mb-4">データの取得に失敗しました</p>
-        <button onClick={() => refetch()} className="text-sm font-bold text-blue-600 bg-blue-50 px-4 py-2 rounded-full">再読み込み</button>
-      </div>
-    )
-  }
+  const posts = postsRes.data || [];
+  const friendshipsRaw = friendshipsRes.data || [];
 
-  const { mainPosts, replies, pendingRequests, acceptedFriends, defaultAvatar } = data
+  // 2. プロフィール情報の取得（返信の投稿者も確実に含める）
+  const postUserIds = posts.map(p => p.user_id);
+  const allFriendUserIds = friendshipsRaw.map(f => f.user_id === user.id ? f.friend_id : f.user_id);
+  // 全ての投稿・返信・友達・自分自身のIDを統合
+  const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds, user.id])).filter(Boolean);
 
-  const friendIds = new Set([user.id, ...acceptedFriends.map((f: any) => f.id)]);
-  const filteredPosts = mainPosts.filter((post: any) => {
-    if (filterMode === 'all') return true;
-    return friendIds.has(post.user_id);
+  const { data: allProfiles } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .in('id', allRelevantUserIds);
+
+  // 友達申請中（未承認）のリスト
+  const pendingRequests = friendshipsRaw
+    .filter(f => String(f.friend_id) === String(user.id) && f.status === 'pending')
+    .map(f => ({
+      user_id: f.user_id,
+      sender_profile: allProfiles?.find(p => p.id === f.user_id)
+    })).filter(req => req.sender_profile);
+
+  // 承認済みの友達リスト
+  const uniqueFriendIds = new Set(
+    friendshipsRaw.filter(f => f.status === 'accepted').map(f => (String(f.user_id) === String(user.id) ? f.friend_id : f.user_id))
+  );
+  const acceptedFriends = Array.from(uniqueFriendIds).map(id => allProfiles?.find(p => id === p.id)).filter(Boolean);
+
+  // 3. 投稿データの整形
+  const formattedPosts = posts.map(post => {
+    const reactions = post.reactions || [];
+    const authorProfile = allProfiles?.find(p => p.id === post.user_id) || {
+      full_name: '匿名ユーザー',
+      avatar_url: defaultAvatar
+    };
+    
+    const relation = friendshipsRaw.find(f => 
+      (String(f.user_id) === String(user.id) && String(f.friend_id) === String(post.user_id)) || 
+      (String(f.user_id) === String(post.user_id) && String(f.friend_id) === String(user.id))
+    );
+    
+    return {
+      ...post,
+      authorProfile,
+      awesomeCount: reactions.filter((r: any) => r.type === 'awesome').length,
+      hugCount: reactions.filter((r: any) => r.type === 'hug').length,
+      myReaction: reactions.find((r: any) => r.user_id === user.id)?.type || null,
+      friendStatus: post.user_id === user.id ? 'me' : (relation?.status || 'none')
+    };
   });
+
+  const mainPosts = formattedPosts.filter(p => !p.parent_id);
+  const replies = formattedPosts.filter(p => p.parent_id);
+
+  if (posts.length === 0) {
+    return (
+      <div className="space-y-4">
+        <PostForm />
+        <div className="text-center py-20 bg-white rounded-[1.5rem] border border-dashed border-gray-200">
+          <p className="text-gray-400 text-sm">まだ投稿がありません。<br/>最初のポジティブな出来事を共有しましょう！</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -100,7 +116,7 @@ function PostListContent({ user }: { user: any }) {
         </div>
       </section>
 
-      {/* 申請リスト */}
+      {/* 申請通知 */}
       {pendingRequests.length > 0 && (
         <section className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-4 rounded-[1.5rem] shadow-md">
           <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-3 px-1">申請が届いています</h3>
@@ -113,7 +129,7 @@ function PostListContent({ user }: { user: any }) {
                 </Link>
                 <form action={acceptFriendRequest}>
                   <input type="hidden" name="requesterId" value={req.user_id} />
-                  <button type="submit" className="text-[10px] bg-blue-600 text-white px-4 py-1.5 rounded-full font-bold shadow-sm">承認</button>
+                  <button type="submit" className="text-[10px] bg-blue-600 text-white px-4 py-1.5 rounded-full font-bold shadow-sm hover:bg-blue-700">承認</button>
                 </form>
               </div>
             ))}
@@ -121,191 +137,134 @@ function PostListContent({ user }: { user: any }) {
         </section>
       )}
 
-      {/* 投稿フォーム */}
       <section><PostForm /></section>
 
-      {/* 切り替えスイッチ */}
-      <div className="flex justify-center py-2">
-        <div className="bg-gray-200/50 p-1 rounded-2xl flex gap-1 border border-white shadow-sm">
-          <button 
-            onClick={() => setFilterMode('all')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black transition-all ${
-              filterMode === 'all' ? 'bg-white text-green-600 shadow-sm' : 'text-gray-400 hover:text-green-600'  
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-current">
-              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM4.332 8.027a6.012 6.012 0 011.912-2.706C6.512 5.73 6.974 6 7.5 6A1.5 1.5 0 019 7.5V8a2 2 0 004 0 2 2 0 011.523-1.943A5.977 5.977 0 0116 10c0 .34-.028.675-.083 1H15a2 2 0 00-2 2v2.197A5.973 5.973 0 0110 16v-2a2 2 0 00-2-2 2 2 0 01-2-2 2 2 0 00-1.668-1.973z" clipRule="evenodd" />
-            </svg>
-            PUBLIC
-          </button>
-          <button 
-            onClick={() => setFilterMode('friends')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black transition-all ${
-              filterMode === 'friends' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-400 hover:text-gray-600'
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-current">
-              <path d="M7 8a3 3 0 100-6 3 3 0 000 6zM14.5 9a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.615 16.428a1.224 1.224 0 01-.569-1.175 6.002 6.002 0 0110.908-2.677 5.18 5.18 0 00-1.213 2.533 1.72 1.72 0 00.453 1.41c.674.674 1.745.674 2.419 0a1.72 1.72 0 00.453-1.41 5.18 5.18 0 00-1.213-2.533 6.003 6.003 0 013.871 3.314c.081.27-.047.551-.27.706A5.978 5.978 0 0110 18a5.978 5.978 0 01-5.615-1.572z" />
-            </svg>
-            FRIENDS
-          </button>
-        </div>
-      </div>
-
-      {/* 投稿リスト */}
       <div className="space-y-3 pb-20">
-        {filteredPosts.length > 0 ? (
-          filteredPosts.map((post: any) => (
-            <div key={post.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <Link href={`/users/${post.user_id}`} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity">
-                  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-9 h-9 rounded-full object-cover border border-gray-50" alt="" />
-                  <div className="flex flex-col text-black">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-bold">{post.authorProfile?.full_name || '匿名'}</span>
-                      {post.privacy_level === 'friends' && (
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-blue-500">
-                          <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                        </svg>
-                      )}
-                    </div>
-                    <span className="text-[9px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
+        {mainPosts.map((post) => (
+          <div key={post.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <Link href={`/users/${post.user_id}`} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity">
+                <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-9 h-9 rounded-full object-cover" alt="" />
+                <div className="flex flex-col text-black">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold">{post.authorProfile?.full_name}</span>
+                    {post.privacy_level === 'friends' && (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-blue-500">
+                        <title>友達限定</title>
+                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
                   </div>
-                </Link>
-                <div className="flex items-center gap-2">
-                  {post.user_id === user.id ? (
-                    <form action={deletePost}>
-                      <input type="hidden" name="postId" value={post.id} />
-                      <button type="submit" className="text-gray-300 hover:text-red-500 transition-colors p-1.5">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                      </button>
-                    </form>
-                  ) : (
-                    <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
-                  )}
+                  <span className="text-[9px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
                 </div>
+              </Link>
+              <div className="flex items-center gap-2">
+                {post.user_id === user.id ? (
+                  <form action={deletePost}>
+                    <input type="hidden" name="postId" value={post.id} />
+                    <button type="submit" className="text-gray-300 hover:text-red-500 transition-colors p-1.5">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                    </button>
+                  </form>
+                ) : (
+                  <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
+                )}
               </div>
-              
-              <p className="text-[15px] text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
-              
-              {post.video_url ? (
-                <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
-                  <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto block" />
-                </div>
-              ) : post.image_url && (
-                <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
-                  <img src={post.image_url} alt="" className="w-full h-auto block" />
-                </div>
-              )}
-
-              <div className="flex items-center justify-between mb-2">
-                <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
-                {post.user_id !== user.id && <ReportButton postId={post.id} />}
-              </div>
-              
-              
-
-{/* 返信一覧 */}
-{replies.some((r: any) => r.parent_id === post.id) && (
-  <div className="ml-6 mt-4 space-y-2 border-l-2 border-gray-50 pl-4 mb-2">
-    {replies.filter((r: any) => r.parent_id === post.id).map((reply: any) => (
-      <div key={reply.id} className="bg-gray-50/50 p-3 rounded-xl group/reply relative transition-all hover:bg-gray-100/50">
-        <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-500 block text-[10px] hover:underline mb-0.5">
-          {reply.authorProfile?.full_name || '匿名'}
-        </Link>
-        <span className="text-gray-700 text-xs leading-normal block mb-2">{reply.content}</span>
-
-        {/* ★ 返信用の通報ボタンをここに追加 */}
-        <div className="flex justify-end pt-1 border-t border-gray-100/50">
-          {reply.user_id !== user.id && (
-            <ReportButton postId={reply.id} />
-          )}
-        </div>
-      </div>
-    ))}
-  </div>
-)}
-
-
-
-              {/* ★ 折りたたみ返信フォーム */}
-              <ReplySection postId={post.id} />
             </div>
-          ))
-        ) : (
-          <div className="text-center py-20 text-gray-400 text-[10px] font-bold uppercase tracking-widest">
-            {filterMode === 'friends' ? '友達の投稿はまだありません' : '投稿はまだありません'}
+            <p className="text-[15px] text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
+            
+            {post.video_url ? (
+              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black max-h-[400px] flex items-center justify-center">
+                <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto max-h-[400px] object-contain" />
+              </div>
+            ) : post.image_url && (
+              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 max-h-[400px] flex items-center justify-center">
+                <img src={post.image_url} alt="" className="w-full h-auto object-contain max-h-[400px]" />
+              </div>
+            )}
+
+            <div className="flex items-center justify-between mb-2">
+              <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
+              {post.user_id !== user.id && <ReportButton postId={post.id} />}
+            </div>
+            
+            {/* --- 返信エリア --- */}
+            {replies.some(r => r.parent_id === post.id) && (
+              <div className="ml-6 mt-4 space-y-2 border-l-2 border-gray-100 pl-4 mb-4">
+                {replies.filter(r => r.parent_id === post.id).map(reply => (
+                  <div key={reply.id} className="bg-gray-50/50 p-3 rounded-xl group/reply relative">
+                    <div className="flex justify-between items-start mb-1">
+                      <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-500 block text-[10px] hover:underline">
+                        {reply.authorProfile?.full_name}
+                      </Link>
+                    </div>
+                    <span className="text-gray-700 text-xs leading-normal whitespace-pre-wrap">{reply.content}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-2">
+              <ReplyForm parentId={post.id} />
+            </div>
           </div>
-        )}
+        ))}
       </div>
     </div>
   );
 }
 
 // --- メイン Index コンポーネント ---
-export default function Index() {
-  const [user, setUser] = useState<any>(null)
-  const [profile, setProfile] = useState<any>(null)
-  const supabase = createClient()
-  const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
+export default async function Index() {
+  const supabase = await createClient()
+  const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
+  const user = userData?.user
 
-  useEffect(() => {
-    const initAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        window.location.href = '/login'
-        return
-      }
-      setUser(user)
-      
-      const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single()
-      setProfile(data)
-    }
-    initAuth()
-  }, [supabase])
-
-  if (!user) return null
+  let currentUserProfile = null;
+  if (user) {
+    const { data } = await supabase.from('profiles').select('full_name, avatar_url').eq('id', user.id).single();
+    currentUserProfile = data;
+  }
 
   return (
     <main className="min-h-screen bg-[#F2F2F2] text-black pb-12 font-sans">
       <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-4 h-14 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-2 group">
-            <h1 className="text-lg font-black tracking-tighter">POSITIVES</h1>
-          </Link>
-
-          <div className="flex items-center gap-2">
-            <Link href="/search" className="p-2 text-gray-400 hover:text-black transition-colors rounded-xl hover:bg-gray-100">
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              </svg>
-            </Link>
-
-            <Link href={`/users/${user.id}`} className="p-1">
-              <img 
-                src={profile?.avatar_url || defaultAvatar} 
-                className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm transition-transform active:scale-90" 
-                alt="My Profile" 
-              />
-            </Link>
-
-            <Link href="/profile" className="text-[10px] font-black text-gray-400 hover:text-gray-900 px-2 py-1 transition-colors uppercase tracking-widest">
-              設定
-            </Link>
-
-            <form action={logout}>
-              <button className="text-[10px] font-black text-gray-300 hover:text-red-500 px-2 py-1 transition-colors uppercase tracking-widest">
-                ログアウト
-              </button>
-            </form>
+          <h1 className="text-lg font-bold tracking-tight text-green-700">POSITIVES</h1>
+          <div className="flex items-center gap-3">
+            {user ? (
+              <>
+                <Link href={`/users/${user.id}`} className="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-gray-100 transition-colors">
+                  <img src={currentUserProfile?.avatar_url || defaultAvatar} className="w-7 h-7 rounded-full object-cover border border-gray-200 shadow-sm" alt="My Avatar" />
+                  <span className="text-xs font-bold text-gray-700 max-w-[100px] truncate hidden sm:block">
+                    {currentUserProfile?.full_name || 'ユーザー'}
+                  </span>
+                </Link>
+                <Link href="/profile" className="text-[10px] font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full hover:bg-gray-200">設定</Link>
+                <form action={logout}>
+                  <button className="text-[10px] bg-white border border-gray-200 text-gray-500 px-3 py-1 rounded-full font-bold hover:bg-gray-50">ログアウト</button>
+                </form>
+              </>
+            ) : (
+              <Link href="/login" className="text-xs bg-black text-white px-5 py-2 rounded-full font-bold">ログイン</Link>
+            )}
           </div>
         </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 pt-4">
-        <PullToRefresh>
-          <PostListContent user={user} />
-        </PullToRefresh>
+        {user ? (
+          <PullToRefresh>
+            <Suspense fallback={<div className="p-10 text-center animate-pulse">読み込み中...</div>}>
+              <PostListContent user={user} />
+            </Suspense>
+          </PullToRefresh>
+        ) : (
+          <div className="text-center py-20">
+             <h2 className="text-xl font-bold mb-4">POSITIVESへようこそ</h2>
+             <Link href="/login" className="bg-green-600 text-white px-8 py-3 rounded-full font-bold inline-block">ログインする</Link>
+          </div>
+        )}
       </div>
     </main>
   );

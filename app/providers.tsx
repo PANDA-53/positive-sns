@@ -5,10 +5,13 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useState } from 'react'
 
 export default function Providers({ children }: { children: React.ReactNode }) {
+  // useStateを使ってQueryClientを初期化することで、
+  // コンポーネントの再レンダリング時にクライアントが作り直されるのを防ぎます
   const [queryClient] = useState(() => new QueryClient({
     defaultOptions: {
       queries: {
-        staleTime: 60 * 1000, 
+        // ここでグローバルなデフォルト設定ができます
+        staleTime: 60 * 1000, // 1分間はデータを「新鮮」とみなしてキャッシュを使う
       },
     },
   }))
@@ -16,10 +19,8 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       {children}
-      {/* 修正ポイント：条件分岐を追加して、本番環境では非表示にします */}
-      {process.env.NODE_ENV === 'development' && (
-        <ReactQueryDevtools initialIsOpen={false} />
-      )}
+      {/* 開発環境でのみDevtoolsを表示（画面右下にアイコンが出ます） */}
+      <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )
 }

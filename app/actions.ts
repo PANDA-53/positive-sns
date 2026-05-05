@@ -10,128 +10,37 @@ const openai = new OpenAI({
 });
 
 /**
- * 【最小追加】NGワード辞書による高速チェック
- */
-async function checkNgWords(content: string) {
-  const supabase = await createClient();
-  const { data: ngWords } = await supabase.from('ng_words').select('word');
-  const found = ngWords?.find(item => content.includes(item.word));
-  if (found) {
-    return { 
-      isToxic: true, 
-      reason: "コミュニティ規定により、その言葉は使用できません。", 
-      suggestions: ["もっと優しい言葉に変えてみませんか？"] 
-    };
-  }
-  return null;
-}
-
-/**
- * 【最小追加】学習ループ用：通報などからNGワードを登録する関数
- */
-export async function addToNgWords(word: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false };
-
-  // 管理者チェック（profilesテーブルのis_adminカラムを参照）
-  const { data: profile } = await supabase.from('profiles').select('is_admin').eq('id', user.id).single();
-  if (!profile?.is_admin) return { success: false, message: "権限がありません" };
-
-  await supabase.from('ng_words').insert({ word, created_by: user.id });
-  revalidatePath('/');
-  return { success: true };
-}
-
-/**
- * 【NEW】TanStack Query 用のデータ取得アクション
- * タイムラインに必要な投稿、プロフィール、友達関係、申請状況をすべて整形して返します
- */
-export async function fetchTimelineData(userId: string) {
-  const supabase = await createClient();
-  const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp";
-
-  // 1. 投稿と友達関係を並列取得
-  const [postsRes, friendshipsRes] = await Promise.all([
-    supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
-    supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
-  ]);
-
-  const posts = postsRes.data || [];
-  const friendshipsRaw = friendshipsRes.data || [];
-
-  // 2. 関連する全ユーザーのプロフィールを一括取得
-  const postUserIds = posts.map(p => p.user_id);
-  const allFriendUserIds = friendshipsRaw.map(f => f.user_id === userId ? f.friend_id : f.user_id);
-  const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds, userId]));
-
-  const { data: allProfiles } = await supabase
-    .from('profiles')
-    .select('id, full_name, avatar_url')
-    .in('id', allRelevantUserIds);
-
-  // 3. 届いている友達申請の整理
-  const pendingRequests = friendshipsRaw
-    .filter(f => String(f.friend_id) === String(userId) && f.status === 'pending')
-    .map(f => ({
-      user_id: f.user_id,
-      sender_profile: allProfiles?.find(p => p.id === f.user_id)
-    })).filter(req => req.sender_profile);
-
-  // 4. 承認済み友達リストの整理
-  const uniqueFriendIds = new Set(
-    friendshipsRaw.filter(f => f.status === 'accepted').map(f => (String(f.user_id) === String(userId) ? f.friend_id : f.user_id))
-  );
-  const acceptedFriends = Array.from(uniqueFriendIds)
-    .map(id => allProfiles?.find(p => id === p.id))
-    .filter(Boolean);
-
-  // 5. 投稿データの整形（リアクション数、自分との関係性など）
-  const formattedPosts = posts.map(post => {
-    const reactions = post.reactions || [];
-    const authorProfile = allProfiles?.find(p => p.id === post.user_id);
-    const relation = friendshipsRaw.find(f => 
-      (String(f.user_id) === String(userId) && String(f.friend_id) === String(post.user_id)) || 
-      (String(f.user_id) === String(post.user_id) && String(f.friend_id) === String(userId))
-    );
-    
-    return {
-      ...post,
-      authorProfile,
-      awesomeCount: reactions.filter((r: any) => r.type === 'awesome').length,
-      hugCount: reactions.filter((r: any) => r.type === 'hug').length,
-      myReaction: reactions.find((r: any) => r.user_id === userId)?.type || null,
-      friendStatus: post.user_id === userId ? 'me' : (relation?.status || 'none')
-    };
-  });
-
-  const mainPosts = formattedPosts.filter(p => !p.parent_id);
-  const replies = formattedPosts.filter(p => p.parent_id);
-
-  return {
-    mainPosts,
-    replies,
-    pendingRequests,
-    acceptedFriends,
-    defaultAvatar
-  };
-}
-
-/**
  * SNS「POSITIVES」モデレーター判定ロジック
  */
 async function checkAndSuggestContent(content: string) {
-  // --- 【最小修正】AIを呼ぶ前に辞書をチェック ---
-  const ngResult = await checkNgWords(content);
-  if (ngResult) return ngResult;
-
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
-          content: `あなたはSNS「POSITIVES」のモデレーター兼、優秀なリライトエディターです。以下の厳格な基準に従って投稿を判定し、不適切な場合はユーザーを導いてください。...（中略）...`
+          content: `あなたはSNS「POSITIVES」のモデレーター兼、優秀なリライトエディターです。以下の厳格な基準に従って投稿を判定し、不適切な場合はユーザーを導いてください。
+
+【TOXIC（投稿禁止）】
+・他者への誹謗中傷、攻撃的発言、差別、偏見、尊厳を傷つける内容
+・コミュニティの和を乱す攻撃的な言葉、他者を不快にする自己中心的な主張
+・他者の投稿を否定するコメント
+・「sine(死ね)」「uzai(うざい)」等の隠語や、否定的感情を表す絵文字
+・「好きじゃない」「ダサい」などの主観的な否定的意見
+
+【SAFE（許可）】
+・ポジティブな内容、笑顔にする内容
+・自責や後悔（自分はダメだ、死にたい等）は、他者を攻撃していないため「SAFE」と判定してください。
+
+【出力ルール】
+1. SAFEの場合： "SAFE" とのみ出力。
+2. TOXICの場合： 必ず以下の形式（パイプ区切り）で出力してください。
+    NG | 理由 | 言い換え案1 | 言い換え案2 | 言い換え案3
+
+【言い換え案作成の重要ルール】
+・単語の置き換えではなく、文章全体の「内容」を維持したまま、棘のない「内省・独り言」にリライトしてください。
+・そのまま投稿ボタンを押して使える「ユーザー自身の独り言（セリフ）」のみを出力してください。
+・文体は「〜だなぁ」「〜かも」「〜かな？」など、SNSで自然な話し言葉にしてください。`
         },
         { 
           role: "user", 
@@ -146,9 +55,7 @@ async function checkAndSuggestContent(content: string) {
     if (result.startsWith("SAFE")) {
       return { isToxic: false, reason: "", suggestions: [] };
     } else {
-      const parts = result.split("|").map(s => 
-        s.trim().replace(/^["「']|["」']$/g, '') 
-      );
+      const parts = result.split("|").map(s => s.trim().replace(/^["「']|["」']$/g, ''));
       return { 
         isToxic: true, 
         reason: parts[1] || "規約に抵触する可能性があります", 
@@ -161,12 +68,129 @@ async function checkAndSuggestContent(content: string) {
   }
 }
 
-// --- 投稿作成 (動画・公開範囲対応版) ---
+/**
+ * 1. 認証関連 (login / signup / logout)
+ * 戻り値を return redirect() にすることで、form action の型エラーを解消します
+ */
+export async function login(formData: FormData): Promise<void> {
+  const supabase = await createClient();
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
+
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    return redirect('/login?error=auth-failed');
+  }
+
+  revalidatePath('/', 'layout');
+  return redirect('/');
+}
+
+export async function signup(formData: FormData): Promise<void> {
+  const supabase = await createClient();
+  const email = formData.get('email') as string;
+  const password = formData.get('password') as string;
+
+  const { error } = await supabase.auth.signUp({ email, password });
+
+  if (error) {
+    return redirect('/login?error=signup-failed');
+  }
+
+  revalidatePath('/', 'layout');
+  return redirect('/login?message=success');
+}
+
+export async function logout() {
+  const supabase = await createClient();
+  await supabase.auth.signOut();
+  revalidatePath('/', 'layout');
+  return redirect('/login');
+}
+
+/**
+ * 2. タイムライン表示用データの取得
+ */
+export async function fetchTimelineData(userId: string) {
+  const supabase = await createClient();
+
+  const [postsRes, commentsRes, friendshipsRes, reactionsRes] = await Promise.all([
+    supabase.from('posts').select('*').order('created_at', { ascending: false }),
+    supabase.from('comments').select('*').order('created_at', { ascending: true }),
+    supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`),
+    supabase.from('reactions').select('*')
+  ]);
+
+  const posts = postsRes.data || [];
+  const comments = commentsRes.data || [];
+  const friendshipsRaw = friendshipsRes.data || [];
+  const reactions = reactionsRes.data || [];
+
+  const pendingRequests = friendshipsRaw.filter(
+    f => String(f.friend_id) === String(userId) && f.status === 'pending'
+  );
+  const acceptedFriends = friendshipsRaw.filter(f => f.status === 'accepted');
+
+  const formattedPosts = posts.map(post => ({
+    ...post,
+    reactions: reactions.filter(r => r.post_id === post.id),
+    comments: comments.filter(c => c.post_id === post.id)
+  }));
+
+  return { formattedPosts, pendingRequests, acceptedFriends };
+}
+
+/**
+ * 3. プロフィールデータの取得
+ */
+export async function fetchUserProfileData(targetUserId: string, currentUserId: string) {
+  const supabase = await createClient();
+
+  const [profileRes, postsRes, friendshipRes] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', targetUserId).single(),
+    supabase.from('posts')
+      .select(`
+        *,
+        reactions ( user_id, type ),
+        comments ( id )
+      `)
+      .eq('user_id', targetUserId)
+      .order('created_at', { ascending: false }),
+    supabase.from('friendships')
+      .select('*')
+      .or(`and(user_id.eq.${currentUserId},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${currentUserId})`)
+      .single()
+  ]);
+
+  const formattedPosts = (postsRes.data || []).map((post: any) => {
+    const reactions = post.reactions || [];
+    const myReaction = reactions.find((r: any) => r.user_id === currentUserId)?.type || null;
+
+    return {
+      ...post,
+      awesomeCount: reactions.filter((r: any) => r.type === 'awesome').length,
+      hugCount: reactions.filter((r: any) => r.type === 'hug').length,
+      myReaction: myReaction,
+      commentsCount: post.comments?.length || 0
+    };
+  });
+
+  return {
+    profile: profileRes.data,
+    mainPosts: formattedPosts, 
+    friendship: friendshipRes.data,
+    isMe: targetUserId === currentUserId, 
+    error: profileRes.error
+  };
+}
+
+/**
+ * 4. 投稿・返信作成
+ */
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
-  const imageFile = formData.get('image') as File | null;
-  const videoFile = formData.get('video') as File | null;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
   
   const { data: { user } } = await supabase.auth.getUser();
@@ -175,34 +199,9 @@ export async function createPost(formData: FormData) {
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return { ...result, errorType: 'toxic-content' };
 
-  let imageUrl = null;
-  let videoUrl = null;
-
-  if (videoFile && videoFile.size > 0 && videoFile.name !== 'undefined') {
-    const fileExt = videoFile.name.split('.').pop();
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-    const { error: uploadError } = await supabase.storage.from('post_images').upload(fileName, videoFile);
-    if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
-      videoUrl = publicUrl;
-    }
-  }
-
-  if (!videoUrl && imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
-    const fileExt = imageFile.name.split('.').pop();
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-    const { error: uploadError } = await supabase.storage.from('post_images').upload(fileName, imageFile);
-    if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
-      imageUrl = publicUrl;
-    }
-  }
-
   await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
-    image_url: imageUrl,
-    video_url: videoUrl,
     privacy_level: privacyLevel 
   });
 
@@ -210,7 +209,6 @@ export async function createPost(formData: FormData) {
   return { isToxic: false };
 }
 
-// --- 返信作成 ---
 export async function createReply(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
@@ -220,29 +218,46 @@ export async function createReply(formData: FormData) {
   if (!user) return { isToxic: false };
 
   const result = await checkAndSuggestContent(content);
-  if (result.isToxic) return { isToxic: true, reason: result.reason, suggestions: result.suggestions };
+  if (result.isToxic) return result;
 
-  await supabase.from('posts').insert({ content, parent_id: parentId, user_id: user.id });
+  await supabase.from('comments').insert({ 
+    content, 
+    post_id: parseInt(parentId), 
+    user_id: user.id,
+    user_name: user.email 
+  });
+
   revalidatePath('/');
   return { isToxic: false };
 }
 
-// --- フレンド・削除・リアクション（既存） ---
+/**
+ * 5. フレンド機能 (image_017f77.png のエラー解消用)
+ */
+export async function sendFriendRequest(targetUserId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  await supabase.from('friendships').insert({
+    user_id: user.id,
+    friend_id: targetUserId,
+    status: 'pending'
+  });
+
+  revalidatePath(`/users/${targetUserId}`);
+}
 
 export async function deleteFriendship(targetUserId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-  await supabase.from('friendships').delete().eq('user_id', user.id).eq('friend_id', targetUserId);
-  revalidatePath('/');
-}
 
-export async function sendFriendRequest(friendId: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-  await supabase.from('friendships').insert({ user_id: user.id, friend_id: friendId, status: 'pending' });
-  revalidatePath('/');
+  await supabase.from('friendships')
+    .delete()
+    .or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
+
+  revalidatePath(`/users/${targetUserId}`);
 }
 
 export async function acceptFriendRequest(formData: FormData) {
@@ -254,28 +269,56 @@ export async function acceptFriendRequest(formData: FormData) {
   revalidatePath('/');
 }
 
-export async function login(formData: FormData) {
+/**
+ * 6. プロフィール更新・通報
+ */
+export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email: formData.get('email') as string, password: formData.get('password') as string });
-  if (error) return redirect('/login?error=auth-failed');
+  const fullName = formData.get('fullName') as string;
+  const bio = formData.get('bio') as string;
+  const avatarFile = formData.get('avatar') as File;
+  
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return redirect('/login');
+
+  const { data: current } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
+  let avatarUrl = current?.avatar_url || null;
+
+  if (avatarFile && avatarFile.size > 0 && avatarFile.name !== 'undefined') {
+    const fileExt = avatarFile.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, avatarFile, { upsert: true });
+
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      avatarUrl = publicUrl;
+    }
+  }
+
+  await supabase.from('profiles').upsert({ 
+    id: user.id, 
+    full_name: fullName, 
+    bio: bio, 
+    avatar_url: avatarUrl, 
+    updated_at: new Date().toISOString() 
+  });
+
   revalidatePath('/', 'layout');
-  redirect('/');
+  return redirect(`/users/${user.id}`);
 }
 
-export async function signup(formData: FormData) {
+export async function reportPost(postId: number) {
   const supabase = await createClient();
-  const { error } = await supabase.auth.signUp({ email: formData.get('email') as string, password: formData.get('password') as string });
-  if (error) return redirect('/login?error=signup-failed');
-  redirect('/');
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, message: "ログインが必要です" };
+  const { error } = await supabase.from('reports').insert({ post_id: postId, reporter_id: user.id });
+  if (error && error.code === '23505') return { success: false, message: "既に報告済みです" };
+  return { success: !error };
 }
 
-export async function logout() {
-  const supabase = await createClient();
-  await supabase.auth.signOut();
-  revalidatePath('/', 'layout');
-  redirect('/login');
-}
-
+/**
+ * 7. リアクション・削除
+ */
 export async function handleReaction(postId: number, reactionType: 'awesome' | 'hug') {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -291,96 +334,4 @@ export async function deletePost(formData: FormData) {
   const supabase = await createClient();
   await supabase.from('posts').delete().eq('id', postId);
   revalidatePath('/');
-}
-
-export async function updateProfile(formData: FormData) {
-  const supabase = await createClient();
-  const fullName = formData.get('fullName') as string;
-  const bio = formData.get('bio') as string;
-  const avatarFile = formData.get('avatar') as File;
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return redirect('/login');
-
-  const { data: current } = await supabase.from('profiles').select('avatar_url').eq('id', user.id).single();
-  let avatarUrl = current?.avatar_url || null;
-
-  if (avatarFile && avatarFile.size > 0 && avatarFile.name !== 'undefined') {
-    const fileExt = avatarFile.name.split('.').pop();
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-    await supabase.storage.from('avatars').upload(fileName, avatarFile, { upsert: true });
-    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
-    avatarUrl = publicUrl;
-  }
-
-  await supabase.from('profiles').upsert({ id: user.id, full_name: fullName, bio: bio, avatar_url: avatarUrl, updated_at: new Date().toISOString() });
-  revalidatePath('/', 'layout');
-  redirect(`/users/${user.id}`);
-}
-
-export async function reportPost(postId: number) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { success: false, message: "ログインが必要です" };
-  const { error } = await supabase.from('reports').insert({ post_id: postId, reporter_id: user.id });
-  if (error) {
-    if (error.code === '23505') return { success: false, message: "既に報告済みです" };
-    return { success: false, message: "エラーが発生しました" };
-  }
-  return { success: true };
-}
-
-export async function searchUsers(query: string) {
-  const supabase = await createClient();
-  const { data: { user: currentUser } } = await supabase.auth.getUser();
-  if (!currentUser) return [];
-  const { data, error } = await supabase.from('profiles').select('id, full_name, avatar_url').ilike('full_name', `%${query}%`).neq('id', currentUser.id).limit(20);
-  if (error) return [];
-  return data;
-}
-
-export async function cancelFriendship(targetUserId: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-  await supabase.from('friendships').delete().or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
-  revalidatePath('/');
-}
-
-export async function fetchUserProfileData(targetUserId: string, currentUserId: string) {
-  const supabase = await createClient();
-
-  const [profileRes, postsRes, friendshipsRes] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', targetUserId).single(),
-    supabase.from('posts').select(`*, reactions (type, user_id)`).eq('user_id', targetUserId).order('created_at', { ascending: false }),
-    supabase.from('friendships').select('*').or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`)
-  ]);
-
-  const profile = profileRes.data;
-  const posts = postsRes.data || [];
-  const friendshipsRaw = friendshipsRes.data || [];
-
-  const formattedPosts = posts.map(post => {
-    const reactions = post.reactions || [];
-    const relation = friendshipsRaw.find(f => 
-      (String(f.user_id) === String(currentUserId) && String(f.friend_id) === String(targetUserId)) || 
-      (String(f.user_id) === String(targetUserId) && String(f.friend_id) === String(currentUserId))
-    );
-    
-    return {
-      ...post,
-      authorProfile: profile,
-      awesomeCount: reactions.filter((r: any) => r.type === 'awesome').length,
-      hugCount: reactions.filter((r: any) => r.type === 'hug').length,
-      myReaction: reactions.find((r: any) => r.user_id === currentUserId)?.type || null,
-      friendStatus: targetUserId === currentUserId ? 'me' : (relation?.status || 'none')
-    };
-  });
-
-  return {
-    profile,
-    mainPosts: formattedPosts.filter(p => !p.parent_id),
-    replies: formattedPosts.filter(p => p.parent_id),
-    isMe: targetUserId === currentUserId,
-    defaultAvatar: "https://www.gravatar.com/avatar/?d=mp"
-  };
 }
