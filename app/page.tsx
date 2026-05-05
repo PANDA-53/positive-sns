@@ -8,7 +8,6 @@ import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
 import FilteredTimeline from '../components/FilteredTimeline'
 
-
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
 async function PostListContent({ user }: { user: any }) {
@@ -31,7 +30,7 @@ async function PostListContent({ user }: { user: any }) {
   const posts = postsRes.data || [];
   const friendshipsRaw = friendshipsRes.data || [];
 
-  // 2. プロフィール情報の取得（投稿者、友達の情報を一括取得）
+  // 2. プロフィール情報の取得
   const postUserIds = posts.map(p => p.user_id);
   const allFriendUserIds = friendshipsRaw.map(f => f.user_id === user.id ? f.friend_id : f.user_id);
   const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds, user.id])).filter(Boolean);
@@ -41,7 +40,6 @@ async function PostListContent({ user }: { user: any }) {
     .select('id, full_name, avatar_url')
     .in('id', allRelevantUserIds);
 
-  // 申請中・友達リストの整理
   const pendingRequests = friendshipsRaw
     .filter(f => String(f.friend_id) === String(user.id) && f.status === 'pending')
     .map(f => ({
@@ -55,7 +53,7 @@ async function PostListContent({ user }: { user: any }) {
   const acceptedFriends = Array.from(uniqueFriendIds).map(id => allProfiles?.find(p => id === p.id)).filter(Boolean);
 
   // 3. データの整形
-  const formattedPosts = posts.map(post => {
+  const formattedPosts = (posts || []).map(post => {
     const reactions = post.reactions || [];
     const authorProfile = allProfiles?.find(p => p.id === post.user_id) || {
       full_name: '匿名ユーザー',
@@ -83,7 +81,6 @@ async function PostListContent({ user }: { user: any }) {
 
   return (
     <div className="space-y-4">
-      {/* 友達一覧 */}
       <section className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-100">
         <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
           {acceptedFriends.length > 0 ? (
@@ -99,7 +96,6 @@ async function PostListContent({ user }: { user: any }) {
         </div>
       </section>
 
-      {/* 申請通知 */}
       {pendingRequests.length > 0 && (
         <section className="bg-blue-50 p-4 rounded-[1.5rem] border border-blue-100 space-y-2">
           {pendingRequests.map((req: any) => (
@@ -116,7 +112,6 @@ async function PostListContent({ user }: { user: any }) {
 
       <PostForm />
 
-      {/* タイムライン表示 */}
       <FilteredTimeline 
         mainPosts={mainPosts} 
         replies={replies} 
@@ -129,37 +124,46 @@ async function PostListContent({ user }: { user: any }) {
 
 export default async function Index() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
+  const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
+  const user = userData?.user
 
-  let profile = null;
+  let currentUserProfile = null;
   if (user) {
     const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    profile = data
+    currentUserProfile = data
   }
 
   return (
-    <main className="min-h-screen bg-[#F2F2F2] pb-10">
-      <nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b h-14 flex items-center px-4 justify-between">
-        <h1 className="text-lg font-black text-green-700 tracking-tighter">POSITIVES</h1>
-        {user && (
-          <div className="flex items-center gap-3">
-             <Link href={`/users/${user.id}`}>
-               <img src={profile?.avatar_url || defaultAvatar} className="w-7 h-7 rounded-full border shadow-sm" alt="" />
-             </Link>
-             <form action={logout}><button className="text-[10px] font-bold text-gray-400">LOGOUT</button></form>
-          </div>
-        )}
+    <main className="min-h-screen bg-[#F2F2F2] pb-10 overflow-x-hidden">
+      <nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b h-14 flex items-center px-4">
+        <div className="max-w-2xl mx-auto w-full flex justify-between items-center">
+          <h1 className="text-lg font-black text-green-700 tracking-tighter">POSITIVES</h1>
+          {user && (
+            <div className="flex items-center gap-3">
+              <Link href={`/users/${user.id}`}>
+                <img src={currentUserProfile?.avatar_url || defaultAvatar} className="w-7 h-7 rounded-full border shadow-sm object-cover" alt="" />
+              </Link>
+              {/* 復活させた設定ボタン */}
+              <Link href="/profile" className="text-[10px] font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full hover:bg-gray-200">
+                設定
+              </Link>
+              <form action={logout}>
+                <button className="text-[10px] font-bold text-gray-400">LOGOUT</button>
+              </form>
+            </div>
+          )}
+        </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 mt-4">
         {user ? (
           <PullToRefresh>
-      <Suspense fallback={<div className="text-center p-10 text-xs font-bold text-gray-400 animate-pulse">LOADING...</div>}>
-        <PostListContent user={user} />
-      </Suspense>
-    </PullToRefresh>
-  ) : (
-          <div className="text-center py-20 bg-white rounded-[2rem] border shadow-sm">
+            <Suspense fallback={<div className="text-center p-10 text-xs font-bold text-gray-400 animate-pulse">LOADING...</div>}>
+              <PostListContent user={user} />
+            </Suspense>
+          </PullToRefresh>
+        ) : (
+          <div className="text-center py-20 bg-white rounded-[2rem] border shadow-sm px-6">
             <h2 className="text-xl font-bold mb-6">ポジティブなSNSを始めよう</h2>
             <Link href="/login" className="bg-green-600 text-white px-10 py-3 rounded-full font-bold shadow-lg hover:bg-green-700 transition-colors">ログインして始める</Link>
           </div>

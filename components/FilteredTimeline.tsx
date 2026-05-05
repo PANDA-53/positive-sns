@@ -64,23 +64,22 @@ export default function FilteredTimeline({ mainPosts = [], replies = [], user, f
             <p className="text-[15px] font-medium text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
             
             {post.video_url ? (
-  <div className="-mx-5 mb-4 bg-black overflow-hidden shadow-inner">
+  <div className="-mx-5 mb-4 bg-black overflow-hidden border-y border-gray-100 aspect-video flex items-center justify-center">
     <video 
       src={post.video_url} 
-      className="w-full h-auto max-h-[400px]" 
-      autoPlay     /* 画面に出たら自動再生 */
-      muted        /* 自動再生には消音が必須（ブラウザのルール） */
-      loop         /* ループ再生 */
-      playsInline  /* ページ内で再生（別画面に飛ばさない、最重要！） */
-      controls={false} /* 画面上でループさせたいなら操作バーは隠すのがおすすめ */
+      className="w-full h-full object-cover" // 余白を埋めて枠いっぱいに広げる
+      autoPlay 
+      muted 
+      loop 
+      playsInline
+      controls={false}
     />
   </div>
 ) : post.image_url && (
-  <div className="-mx-5 mb-4 bg-gray-50 flex items-center justify-center">
-    <img src={post.image_url} alt="" className="w-full h-auto" />
+  <div className="-mx-5 mb-4 bg-gray-50 overflow-hidden border-y border-gray-100 flex items-center justify-center">
+    <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[500px]" />
   </div>
 )}
-
             <div className="flex items-center justify-between mb-2">
               <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
               {post.user_id !== user?.id && <ReportButton postId={post.id} />}
