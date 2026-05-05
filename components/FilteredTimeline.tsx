@@ -64,10 +64,22 @@ export default function FilteredTimeline({ mainPosts = [], replies = [], user, f
             <p className="text-[15px] font-medium text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
             
             {post.video_url ? (
-              <div className="-mx-5 mb-4 bg-black"><video src={post.video_url} controls className="w-full h-auto" /></div>
-            ) : post.image_url && (
-              <div className="-mx-5 mb-4 bg-gray-50"><img src={post.image_url} alt="" className="w-full h-auto" /></div>
-            )}
+  <div className="-mx-5 mb-4 bg-black overflow-hidden shadow-inner">
+    <video 
+      src={post.video_url} 
+      className="w-full h-auto max-h-[400px]" 
+      autoPlay     /* 画面に出たら自動再生 */
+      muted        /* 自動再生には消音が必須（ブラウザのルール） */
+      loop         /* ループ再生 */
+      playsInline  /* ページ内で再生（別画面に飛ばさない、最重要！） */
+      controls={false} /* 画面上でループさせたいなら操作バーは隠すのがおすすめ */
+    />
+  </div>
+) : post.image_url && (
+  <div className="-mx-5 mb-4 bg-gray-50 flex items-center justify-center">
+    <img src={post.image_url} alt="" className="w-full h-auto" />
+  </div>
+)}
 
             <div className="flex items-center justify-between mb-2">
               <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
