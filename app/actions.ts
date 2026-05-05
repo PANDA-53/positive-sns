@@ -269,3 +269,38 @@ export async function reportPost(postId: number) {
 
   return { success: true };
 }
+
+// --- ユーザー検索用アクション ---
+export async function searchUsers(query: string) {
+  const supabase = await createClient();
+  const { data: { user: currentUser } } = await supabase.auth.getUser();
+  if (!currentUser) return [];
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .ilike('full_name', `%${query}%`)
+    .neq('id', currentUser.id) // 自分自身は除外
+    .limit(20);
+
+  if (error) {
+    console.error("検索エラー:", error);
+    return [];
+  }
+  return data;
+}
+
+// --- 友達申請の取り消し・解除 (既存のdeleteFriendshipを強化) ---
+export async function cancelFriendship(targetUserId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+
+  // 自分が送った、または相手から送られた申請を削除
+  await supabase
+    .from('friendships')
+    .delete()
+    .or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
+
+  revalidatePath('/');
+}

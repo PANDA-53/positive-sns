@@ -69,7 +69,7 @@ async function PostListContent({ user }: { user: any }) {
 
   return (
     <div className="space-y-4">
-      {/* 友達一覧: FRIENDSテキストを削除し、余白を凝縮 */}
+      {/* 友達一覧 */}
       <section className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
           {acceptedFriends.length > 0 ? (
@@ -87,7 +87,7 @@ async function PostListContent({ user }: { user: any }) {
         </div>
       </section>
 
-      {/* 申請リスト: 高さを抑えてコンパクトに */}
+      {/* 申請リスト */}
       {pendingRequests.length > 0 && (
         <section className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-4 rounded-[1.5rem] shadow-md">
           <h3 className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-3 px-1">申請が届いています</h3>
@@ -111,19 +111,18 @@ async function PostListContent({ user }: { user: any }) {
       {/* 投稿フォーム */}
       <section><PostForm /></section>
 
-      {/* 投稿リスト: カードの間隔を space-y-6 -> space-y-3 に削減 */}
+      {/* 投稿リスト */}
       <div className="space-y-3 pb-20">
         {mainPosts.map((post) => (
           <div key={post.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
             <div className="flex items-center justify-between mb-3">
               <Link href={`/users/${post.user_id}`} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity">
-                <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-9 h-9 rounded-full object-cover" alt="" />
+                <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-9 h-9 rounded-full object-cover border border-gray-50" alt="" />
                 <div className="flex flex-col text-black">
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold">{post.authorProfile?.full_name || '匿名'}</span>
                     {post.privacy_level === 'friends' && (
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-blue-500">
-                        <title>友達限定</title>
                         <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                       </svg>
                     )}
@@ -165,11 +164,9 @@ async function PostListContent({ user }: { user: any }) {
               <div className="ml-6 mt-4 space-y-2 border-l-2 border-gray-50 pl-4 mb-4">
                 {replies.filter(r => r.parent_id === post.id).map(reply => (
                   <div key={reply.id} className="bg-gray-50/50 p-2.5 rounded-xl group/reply relative">
-                    <div className="flex justify-between items-start">
-                      <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-500 block text-[10px] hover:underline">
-                        {reply.authorProfile?.full_name || '匿名'}
-                      </Link>
-                    </div>
+                    <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-500 block text-[10px] hover:underline">
+                      {reply.authorProfile?.full_name || '匿名'}
+                    </Link>
                     <span className="text-gray-700 text-xs leading-normal">{reply.content}</span>
                   </div>
                 ))}
@@ -201,27 +198,49 @@ export default async function Index() {
     <main className="min-h-screen bg-[#F2F2F2] text-black pb-12 font-sans">
       <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-200">
         <div className="max-w-2xl mx-auto px-4 h-14 flex justify-between items-center">
-          <h1 className="text-lg font-bold tracking-tight text-green-700">POSITIVES</h1>
-          <div className="flex items-center gap-3">
+          {/* ロゴエリア */}
+          <Link href="/" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 bg-black rounded-xl flex items-center justify-center transition-transform group-active:scale-95">
+              <span className="text-white font-black text-lg">P</span>
+            </div>
+            <h1 className="text-lg font-black tracking-tighter italic hidden sm:block">POSITIVES</h1>
+          </Link>
+
+          {/* アクションエリア */}
+          <div className="flex items-center gap-2">
             {user ? (
               <>
-                <Link href={`/users/${user.id}`} className="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-gray-100 transition-colors">
-                  <img src={currentUserProfile?.avatar_url || defaultAvatar} className="w-7 h-7 rounded-full object-cover border border-gray-200 shadow-sm" alt="My Avatar" />
-                  <span className="text-xs font-bold text-gray-700 max-w-[100px] truncate hidden sm:block">
-                    {currentUserProfile?.full_name || 'ユーザー'}
-                  </span>
+                {/* 検索ボタンを追加 */}
+                <Link 
+                  href="/search" 
+                  className="p-2 text-gray-400 hover:text-black transition-colors rounded-xl hover:bg-gray-100"
+                  aria-label="検索"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                  </svg>
                 </Link>
-                <Link href="/profile" className="text-[10px] font-bold text-gray-500 bg-gray-100 px-3 py-1 rounded-full hover:bg-gray-200">
-                  設定
+
+                <Link href={`/users/${user.id}`} className="p-1">
+                  <img 
+                    src={currentUserProfile?.avatar_url || defaultAvatar} 
+                    className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm transition-transform active:scale-90" 
+                    alt="My Profile" 
+                  />
                 </Link>
+
+                <Link href="/profile" className="text-[10px] font-black text-gray-400 hover:text-gray-900 px-2 py-1 transition-colors uppercase tracking-widest">
+                  Settings
+                </Link>
+
                 <form action={logout}>
-                  <button className="text-[10px] bg-white border border-gray-200 text-gray-500 px-3 py-1 rounded-full font-bold hover:bg-gray-50">
-                    ログアウト
+                  <button className="text-[10px] font-black text-red-300 hover:text-red-500 px-2 py-1 transition-colors uppercase tracking-widest">
+                    Logout
                   </button>
                 </form>
               </>
             ) : (
-              <Link href="/login" className="text-xs bg-black text-white px-5 py-2 rounded-full font-bold">ログイン</Link>
+              <Link href="/login" className="text-xs bg-black text-white px-5 py-2 rounded-full font-bold">LOGIN</Link>
             )}
           </div>
         </div>
@@ -233,16 +252,16 @@ export default async function Index() {
             <Suspense fallback={
               <div className="animate-pulse space-y-4 w-full max-w-md mx-auto mt-10">
                 <div className="h-32 bg-gray-200 rounded-[1.5rem]"></div>
-                <div className="h-10 bg-gray-200 rounded-2xl w-3/4"></div>
+                <div className="h-40 bg-gray-200 rounded-[1.5rem]"></div>
               </div>
             }>
               <PostListContent user={user} />
             </Suspense>
           </PullToRefresh>
         ) : (
-          <div className="text-center py-20">
-             <h2 className="text-xl font-bold mb-4">POSITIVESへようこそ</h2>
-             <Link href="/login" className="bg-green-600 text-white px-8 py-3 rounded-full font-bold inline-block">ログインする</Link>
+          <div className="text-center py-24 bg-white rounded-[2rem] shadow-sm border border-gray-100 mt-10">
+             <h2 className="text-2xl font-black tracking-tighter mb-6 italic">BE POSITIVE.</h2>
+             <Link href="/login" className="bg-black text-white px-10 py-4 rounded-full font-black text-xs tracking-widest hover:bg-gray-800 transition-all">START NOW</Link>
           </div>
         )}
       </div>

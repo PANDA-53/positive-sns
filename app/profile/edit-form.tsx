@@ -67,7 +67,7 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
             </svg>
             <span>キャンセル</span>
           </Link>
-          <h1 className="text-sm font-bold italic">Profile Settings</h1>
+          <h1 className="text-sm font-bold">Profile Settings</h1>
           <div className="w-16"></div>
         </div>
       </nav>
