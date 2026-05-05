@@ -36,7 +36,7 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
     return <div className="text-center py-20 text-gray-500 text-xs font-bold">ユーザーが見つからないか、エラーが発生しました</div>
   }
 
-  const { profile, mainPosts, isMe} = data
+  const { profile, mainPosts, isMe } = data
 
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4">
@@ -87,15 +87,29 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
               </div>
               <p className="text-[15px] text-gray-800 mb-4 leading-snug whitespace-pre-wrap">{post.content}</p>
               
-              {post.video_url ? (
-                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black flex items-center justify-center">
-                  <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto max-h-[400px] object-contain" />
-                </div>
-              ) : post.image_url && (
-                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 flex items-center justify-center">
-                  <img src={post.image_url} alt="" className="w-full h-auto object-contain max-h-[400px]" />
-                </div>
-              )}
+              {/* ビデオの場合 */}
+{post.video_url ? (
+  <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
+    <video 
+      src={post.video_url} 
+      controls 
+      muted 
+      loop 
+      autoPlay 
+      playsInline 
+      className="w-full h-auto block" // 余計な max-h を消し、横幅いっぱいに
+    />
+  </div>
+) : post.image_url && (
+  /* 画像の場合 */
+  <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
+    <img 
+      src={post.image_url} 
+      alt="" 
+      className="w-full h-auto block" // object-contain や max-h を削除
+    />
+  </div>
+)}
 
               <div className="flex items-center">
                 <ReactionButtons 
