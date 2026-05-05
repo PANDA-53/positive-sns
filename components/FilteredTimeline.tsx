@@ -65,18 +65,26 @@ export default function FilteredTimeline({ mainPosts = [], replies = [], user, f
             
             {/* FilteredTimeline.tsx 内 */}
 {post.video_url ? (
-  <div className="-mx-5 mb-4 bg-black overflow-hidden border-y border-gray-100">
-    <video 
-      src={post.video_url} 
-      className="w-full h-auto block" // 余計な max-h を消す
-      autoPlay muted loop playsInline 
-    />
-  </div>
-) : post.image_url && (
-  <div className="-mx-5 mb-4 bg-gray-50 border-y border-gray-100">
-    <img src={post.image_url} className="w-full h-auto block" alt="" />
-  </div>
-)}
+              <div className="-mx-5 mb-4 bg-black overflow-hidden border-y border-gray-100 shadow-sm">
+                <video 
+                  src={post.video_url} 
+                  controls 
+                  muted 
+                  loop 
+                  autoPlay 
+                  playsInline 
+                  className="w-full h-auto block" // 横幅いっぱいに広げ、操作パネルを表示
+                />
+              </div>
+            ) : post.image_url && (
+              <div className="-mx-5 mb-4 bg-gray-50 overflow-hidden border-y border-gray-100 shadow-sm">
+                <img 
+                  src={post.image_url} 
+                  alt="" 
+                  className="w-full h-auto block" // 余計な制限を外して全表示
+                />
+              </div>
+            )}
             <div className="flex items-center justify-between mb-2">
               <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
               {post.user_id !== user?.id && <ReportButton postId={post.id} />}
