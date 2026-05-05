@@ -1,10 +1,11 @@
 export const dynamic = 'force-dynamic';
 
 import { createClient } from '../utils/supabase/server'
-import { logout, acceptFriendRequest, deletePost } from './actions'
+import { logout, acceptFriendRequest, deletePost, reportPost } from './actions' // reportPostを追加
 import { Suspense } from 'react'
 import { ReactionButtons } from '../components/reaction-buttons'
 import { FriendButton } from '../components/friend-button'
+import { ReportButton } from '../components/report-button' // ReportButtonをインポート
 import PostForm from '../components/post-form'
 import ReplyForm from '../components/ReplyForm'
 import Link from 'next/link'
@@ -68,7 +69,7 @@ async function PostListContent({ user }: { user: any }) {
 
   return (
     <div className="space-y-8">
-      {/* 友達一覧 */}
+      {/* 友達一覧 (省略なし) */}
       <section className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
         <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 px-2">Friends</h3>
         <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
@@ -87,7 +88,7 @@ async function PostListContent({ user }: { user: any }) {
         </div>
       </section>
 
-      {/* 申請リスト */}
+      {/* 申請リスト (省略なし) */}
       {pendingRequests.length > 0 && (
         <section className="bg-gradient-to-br from-blue-50 to-white border border-blue-200 p-6 rounded-[2.5rem] shadow-lg">
           <h3 className="text-xs font-black text-blue-600 uppercase tracking-widest mb-4 px-2">申請が届いています</h3>
@@ -138,31 +139,25 @@ async function PostListContent({ user }: { user: any }) {
             </div>
             <p className="text-base text-gray-800 mb-4 whitespace-pre-wrap">{post.content}</p>
             
-            {/* 動画表示エリア (縦長対応済み) */}
             {post.video_url ? (
               <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-black max-h-[500px] flex items-center justify-center">
-                <video 
-                  src={post.video_url} 
-                  controls 
-                  muted 
-                  loop 
-                  autoPlay 
-                  playsInline 
-                  className="w-full h-auto max-h-[500px] object-contain"
-                />
+                <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto max-h-[500px] object-contain" />
               </div>
             ) : post.image_url && (
-              /* 画像表示エリア (縦長対応済み) */
               <div className="mb-4 rounded-2xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 max-h-[500px] flex items-center justify-center">
-                <img 
-                  src={post.image_url} 
-                  alt="" 
-                  className="w-full h-auto object-contain max-h-[500px]" 
-                />
+                <img src={post.image_url} alt="" className="w-full h-auto object-contain max-h-[500px]" />
               </div>
             )}
 
-            <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
+            {/* アクションエリア */}
+            <div className="flex items-center justify-between">
+              <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
+              
+              {/* 通報ボタン：自分の投稿以外に表示 */}
+              {post.user_id !== user.id && (
+                <ReportButton postId={post.id} />
+              )}
+            </div>
             
             {replies.some(r => r.parent_id === post.id) && (
               <div className="ml-8 mt-6 space-y-4 border-l-2 border-gray-100 pl-6 mb-6">
@@ -174,7 +169,9 @@ async function PostListContent({ user }: { user: any }) {
                 ))}
               </div>
             )}
-            <ReplyForm parentId={post.id} />
+            <div className="mt-4">
+              <ReplyForm parentId={post.id} />
+            </div>
           </div>
         ))}
       </div>
@@ -182,7 +179,7 @@ async function PostListContent({ user }: { user: any }) {
   );
 }
 
-// --- メイン Index コンポーネント ---
+// --- メイン Index コンポーネント (省略なし) ---
 export default async function Index() {
   const supabase = await createClient()
   const { data: userData } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
@@ -203,11 +200,7 @@ export default async function Index() {
             {user ? (
               <>
                 <Link href={`/users/${user.id}`} className="flex items-center gap-2 px-2 py-1 rounded-full hover:bg-gray-100 transition-colors">
-                  <img 
-                    src={currentUserProfile?.avatar_url || defaultAvatar} 
-                    className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm" 
-                    alt="My Avatar" 
-                  />
+                  <img src={currentUserProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-200 shadow-sm" alt="My Avatar" />
                   <span className="text-xs font-bold text-gray-700 max-w-[100px] truncate hidden sm:block">
                     {currentUserProfile?.full_name || 'ユーザー'}
                   </span>
@@ -235,7 +228,6 @@ export default async function Index() {
               <div className="animate-pulse space-y-4 w-full max-w-md mx-auto mt-10">
                 <div className="h-48 bg-gray-200 rounded-[2.5rem]"></div>
                 <div className="h-12 bg-gray-200 rounded-2xl w-3/4"></div>
-                <div className="h-12 bg-gray-200 rounded-2xl"></div>
               </div>
             }>
               <PostListContent user={user} />

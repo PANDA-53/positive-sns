@@ -37,13 +37,20 @@ async function checkAndSuggestContent(content: string) {
     NG | 理由 | 言い換え案1 | 言い換え案2 | 言い換え案3
 
 ※重要：
-・ベイマックスのように、丁寧で、温かみがあり、少し機械的なケアロボットの口調で提案してください。
 ・言い換え案には "" や 「」 や言い換え案１、２、３を含めないでください。
 ・否定的な意見には言い換え案を表示させないでください。
 ・「好きじゃない」「ダサい」などの主観的な否定的意見もTOXICと判定してください。
 ・NGの際に理由が分からないときは理由の部分には何も書かないでください。
 ・コメント内容がアドバイスであっても攻撃的な口調は言い換えを提案させてください。
-・一人称は「私」、二人称は「あなた」としてください。`
+・一人称は「私」、二人称は「あなた」としてください。
+・そのまま投稿ボタンを押して使える「ユーザー自身の独り言（セリフ）」のみを出力してください。
+・文体は「〜だなぁ」「〜かも」「〜かな？」など、SNSで自然な話し言葉にしてください。
+例
+入力：「うざい」
+変換案：
+- 「ちょっと今は距離を置きたい気分かも」
+- 「自分とは少し考え方が違うみたいだな」
+- 「なんであんな感じになっちゃうんだろう？」`
         },
         { 
           role: "user", 
@@ -240,4 +247,24 @@ export async function updateProfile(formData: FormData) {
   await supabase.from('profiles').upsert({ id: user.id, full_name: fullName, bio: bio, avatar_url: avatarUrl, updated_at: new Date().toISOString() });
   revalidatePath('/', 'layout');
   redirect(`/users/${user.id}`);
+}
+export async function reportPost(postId: number) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  if (!user) return { success: false, message: "ログインが必要です" };
+
+  const { error } = await supabase.from('reports').insert({
+    post_id: postId,
+    reporter_id: user.id
+  });
+
+  if (error) {
+    if (error.code === '23505') { // ユニーク制約エラー
+      return { success: false, message: "既に報告済みです" };
+    }
+    return { success: false, message: "エラーが発生しました" };
+  }
+
+  return { success: true };
 }
