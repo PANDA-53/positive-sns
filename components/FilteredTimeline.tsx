@@ -63,21 +63,18 @@ export default function FilteredTimeline({ mainPosts = [], replies = [], user, f
             
             <p className="text-[15px] font-medium text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
             
-            {post.video_url ? (
-  <div className="-mx-5 mb-4 bg-black overflow-hidden border-y border-gray-100 aspect-video flex items-center justify-center">
+            {/* FilteredTimeline.tsx 内 */}
+{post.video_url ? (
+  <div className="-mx-5 mb-4 bg-black overflow-hidden border-y border-gray-100">
     <video 
       src={post.video_url} 
-      className="w-full h-full object-cover" // 余白を埋めて枠いっぱいに広げる
-      autoPlay 
-      muted 
-      loop 
-      playsInline
-      controls={false}
+      className="w-full h-auto block" // 余計な max-h を消す
+      autoPlay muted loop playsInline 
     />
   </div>
 ) : post.image_url && (
-  <div className="-mx-5 mb-4 bg-gray-50 overflow-hidden border-y border-gray-100 flex items-center justify-center">
-    <img src={post.image_url} alt="" className="w-full h-auto object-cover max-h-[500px]" />
+  <div className="-mx-5 mb-4 bg-gray-50 border-y border-gray-100">
+    <img src={post.image_url} className="w-full h-auto block" alt="" />
   </div>
 )}
             <div className="flex items-center justify-between mb-2">

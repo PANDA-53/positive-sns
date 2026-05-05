@@ -354,3 +354,67 @@ export async function deletePost(formData: FormData) {
   revalidatePath('/');
   if (user) revalidatePath(`/users/${user.id}`);
 }
+/**
+ * 2. メインタイムライン用データ取得 (キャッシュ・重複・型エラー対策版)
+ */
+export async function fetchMainTimelineData(userId: string) {
+  const supabase = await createClient();
+  
+  // 1. 投稿と友情関係を並列で取得
+  const [postsRes, friendshipsRes] = await Promise.all([
+    supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
+    supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+  ]);
+
+  const posts = postsRes.data || [];
+  const friendshipsRaw = friendshipsRes.data || [];
+
+  // 2. 関連する全ユーザーIDを抽出してプロフィールを一括取得
+  const postUserIds = posts.map(p => p.user_id);
+  const friendUserIds = friendshipsRaw.map(f => (f.user_id === userId ? f.friend_id : f.user_id));
+  const allRelevantIds = Array.from(new Set([...postUserIds, ...friendUserIds, userId])).filter(Boolean);
+
+  const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allRelevantIds);
+
+  // --- 3. 友情関係の重複を Map で物理的に排除 (image_e728e0.png の対策) ---
+  const friendMap = new Map();
+  
+  friendshipsRaw
+    .filter(f => f.status === 'accepted')
+    .forEach(f => {
+      // 自分じゃない方のIDを特定
+      const fid = f.user_id === userId ? f.friend_id : f.user_id;
+      const profile = allProfiles?.find(p => p.id === fid);
+      // Mapはキーが重複しないため、同じユーザーは1人分に集約される
+      if (profile) friendMap.set(fid, profile);
+    });
+  
+  const acceptedFriends = Array.from(friendMap.values());
+
+  // 4. 申請中リストの整理
+  const pendingRequests = friendshipsRaw
+    .filter(f => f.friend_id === userId && f.status === 'pending')
+    .map(f => ({
+      user_id: f.user_id,
+      sender_profile: allProfiles?.find(p => p.id === f.user_id)
+    }))
+    .filter(req => req.sender_profile);
+
+  // 5. 投稿データの整形
+  const formattedPosts = posts.map(post => ({
+    ...post,
+    authorProfile: allProfiles?.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '' },
+    awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
+    hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
+    myReaction: post.reactions?.find((r: any) => r.user_id === userId)?.type || null,
+  }));
+
+  return {
+    mainPosts: formattedPosts.filter(p => !p.parent_id),
+    replies: formattedPosts.filter(p => p.parent_id),
+    // --- 6. 型アサーションで f.id の赤線を解消 (image_e78a96.png の対策) ---
+    friendIds: Array.from(friendMap.keys()) as string[], 
+    pendingRequests,
+    acceptedFriends
+  };
+}
