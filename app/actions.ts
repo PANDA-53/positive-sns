@@ -128,26 +128,22 @@ export async function fetchTimelineData(userId: string) {
 }
 
 /**
- * 3. プロフィールデータの取得（修正ポイント：確実にデータを取得するロジック）
+ * 3. プロフィールデータの取得
  */
 export async function fetchUserProfileData(targetUserId: string, currentUserId: string) {
   const supabase = await createClient();
-  
-  // 1. targetUserId が UUID 形式であることを保証し、文字列の不一致を排除
   const cleanTargetId = targetUserId.toLowerCase().trim();
 
-  // 2. プロフィール、投稿、リアクション、フレンドシップを個別に取得（リレーションエラーの回避）
   const [profileRes, postsRes, friendshipRes, allReactionsRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', cleanTargetId).single(),
     supabase.from('posts').select('*').eq('user_id', cleanTargetId).order('created_at', { ascending: false }),
     supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${cleanTargetId}),and(user_id.eq.${cleanTargetId},friend_id.eq.${currentUserId})`).single(),
-    supabase.from('reactions').select('*') // リアクションは全体から取得してフィルタリング
+    supabase.from('reactions').select('*')
   ]);
 
   const posts = postsRes.data || [];
   const reactions = allReactionsRes.data || [];
 
-  // 3. 投稿データにリアクション情報を手動で紐付け
   const formattedPosts = posts.map((post: any) => {
     const postReactions = reactions.filter((r: any) => r.post_id === post.id);
     return {
@@ -155,7 +151,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
       awesomeCount: postReactions.filter((r: any) => r.type === 'awesome').length,
       hugCount: postReactions.filter((r: any) => r.type === 'hug').length,
       myReaction: postReactions.find((r: any) => r.user_id === currentUserId)?.type || null,
-      commentsCount: 0 // カウントが必要な場合は別途追加可能
+      commentsCount: 0 
     };
   });
 
@@ -169,21 +165,44 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 }
 
 /**
- * 4. 投稿・返信作成
+ * 4. 投稿・返信作成（画像アップロード対応）
  */
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
+  const privacyLevel = (formData.get('privacy_level') as string) || 'public';
+  const imageFile = formData.get('image') as File | null; 
+  
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect('/login');
 
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return { ...result, errorType: 'toxic-content' };
 
+  let imageUrl = null;
+
+  // 画像アップロード処理
+  if (imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
+    const fileExt = imageFile.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('posts') 
+      .upload(fileName, imageFile);
+
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage
+        .from('posts')
+        .getPublicUrl(fileName);
+      imageUrl = publicUrl;
+    }
+  }
+
   await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
-    privacy_level: (formData.get('privacy_level') as string) || 'public' 
+    privacy_level: privacyLevel,
+    image_url: imageUrl 
   });
 
   revalidatePath('/');
@@ -241,7 +260,7 @@ export async function acceptFriendRequest(formData: FormData) {
 }
 
 /**
- * 6. プロフィール更新・通報
+ * 6. プロフィール更新
  */
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
@@ -258,7 +277,9 @@ export async function updateProfile(formData: FormData) {
   if (avatarFile && avatarFile.size > 0 && avatarFile.name !== 'undefined') {
     const fileName = `${user.id}/${Date.now()}.${avatarFile.name.split('.').pop()}`;
     const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, avatarFile, { upsert: true });
-    if (!uploadError) avatarUrl = supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;
+    if (!uploadError) {
+      avatarUrl = supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;
+    }
   }
 
   await supabase.from('profiles').upsert({ id: user.id, full_name: fullName, bio: bio, avatar_url: avatarUrl, updated_at: new Date().toISOString() });
