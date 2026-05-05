@@ -1,15 +1,12 @@
 export const dynamic = 'force-dynamic';
 
 import { createClient } from '../utils/supabase/server'
-import { logout, acceptFriendRequest, deletePost, reportPost } from './actions'
+import { logout, acceptFriendRequest } from './actions'
 import { Suspense } from 'react'
-import { ReactionButtons } from '../components/reaction-buttons'
-import { FriendButton } from '../components/friend-button'
-import { ReportButton } from '../components/report-button'
 import PostForm from '../components/post-form'
-import ReplyForm from '../components/ReplyForm'
 import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
+import FilteredTimeline from '../components/FilteredTimeline' // 新設するコンポーネント
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
@@ -34,10 +31,9 @@ async function PostListContent({ user }: { user: any }) {
   const posts = postsRes.data || [];
   const friendshipsRaw = friendshipsRes.data || [];
 
-  // 2. プロフィール情報の取得（返信の投稿者も確実に含める）
+  // 2. プロフィール情報の取得
   const postUserIds = posts.map(p => p.user_id);
   const allFriendUserIds = friendshipsRaw.map(f => f.user_id === user.id ? f.friend_id : f.user_id);
-  // 全ての投稿・返信・友達・自分自身のIDを統合
   const allRelevantUserIds = Array.from(new Set([...postUserIds, ...allFriendUserIds, user.id])).filter(Boolean);
 
   const { data: allProfiles } = await supabase
@@ -45,7 +41,7 @@ async function PostListContent({ user }: { user: any }) {
     .select('id, full_name, avatar_url')
     .in('id', allRelevantUserIds);
 
-  // 友達申請中（未承認）のリスト
+  // 申請中・友達リストの整理
   const pendingRequests = friendshipsRaw
     .filter(f => String(f.friend_id) === String(user.id) && f.status === 'pending')
     .map(f => ({
@@ -53,13 +49,12 @@ async function PostListContent({ user }: { user: any }) {
       sender_profile: allProfiles?.find(p => p.id === f.user_id)
     })).filter(req => req.sender_profile);
 
-  // 承認済みの友達リスト
   const uniqueFriendIds = new Set(
     friendshipsRaw.filter(f => f.status === 'accepted').map(f => (String(f.user_id) === String(user.id) ? f.friend_id : f.user_id))
   );
   const acceptedFriends = Array.from(uniqueFriendIds).map(id => allProfiles?.find(p => id === p.id)).filter(Boolean);
 
-  // 3. 投稿データの整形
+  // データの整形（リテラル型の整理）
   const formattedPosts = posts.map(post => {
     const reactions = post.reactions || [];
     const authorProfile = allProfiles?.find(p => p.id === post.user_id) || {
@@ -85,20 +80,12 @@ async function PostListContent({ user }: { user: any }) {
   const mainPosts = formattedPosts.filter(p => !p.parent_id);
   const replies = formattedPosts.filter(p => p.parent_id);
 
-  if (posts.length === 0) {
-    return (
-      <div className="space-y-4">
-        <PostForm />
-        <div className="text-center py-20 bg-white rounded-[1.5rem] border border-dashed border-gray-200">
-          <p className="text-gray-400 text-sm">まだ投稿がありません。<br/>最初のポジティブな出来事を共有しましょう！</p>
-        </div>
-      </div>
-    );
-  }
+  // 友達IDの配列化（クライアント側に渡す用）
+  const friendIds = Array.from(uniqueFriendIds) as string[];
 
   return (
     <div className="space-y-4">
-      {/* 友達一覧 */}
+      {/* 友達一覧アイコン */}
       <section className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
           {acceptedFriends.length > 0 ? (
@@ -137,79 +124,22 @@ async function PostListContent({ user }: { user: any }) {
         </section>
       )}
 
+      {/* 投稿フォーム */}
       <section><PostForm /></section>
 
-      <div className="space-y-3 pb-20">
-        {mainPosts.map((post) => (
-          <div key={post.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <Link href={`/users/${post.user_id}`} className="flex items-center gap-2.5 hover:opacity-70 transition-opacity">
-                <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-9 h-9 rounded-full object-cover" alt="" />
-                <div className="flex flex-col text-black">
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold">{post.authorProfile?.full_name}</span>
-                    {post.privacy_level === 'friends' && (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-blue-500">
-                        <title>友達限定</title>
-                        <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                      </svg>
-                    )}
-                  </div>
-                  <span className="text-[9px] text-gray-400">{new Date(post.created_at).toLocaleDateString()}</span>
-                </div>
-              </Link>
-              <div className="flex items-center gap-2">
-                {post.user_id === user.id ? (
-                  <form action={deletePost}>
-                    <input type="hidden" name="postId" value={post.id} />
-                    <button type="submit" className="text-gray-300 hover:text-red-500 transition-colors p-1.5">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
-                    </button>
-                  </form>
-                ) : (
-                  <FriendButton targetUserId={post.user_id} initialStatus={post.friendStatus} />
-                )}
-              </div>
-            </div>
-            <p className="text-[15px] text-gray-800 mb-3 whitespace-pre-wrap leading-snug">{post.content}</p>
-            
-            {post.video_url ? (
-              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black max-h-[400px] flex items-center justify-center">
-                <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto max-h-[400px] object-contain" />
-              </div>
-            ) : post.image_url && (
-              <div className="mb-3 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 max-h-[400px] flex items-center justify-center">
-                <img src={post.image_url} alt="" className="w-full h-auto object-contain max-h-[400px]" />
-              </div>
-            )}
-
-            <div className="flex items-center justify-between mb-2">
-              <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
-              {post.user_id !== user.id && <ReportButton postId={post.id} />}
-            </div>
-            
-            {/* --- 返信エリア --- */}
-            {replies.some(r => r.parent_id === post.id) && (
-              <div className="ml-6 mt-4 space-y-2 border-l-2 border-gray-100 pl-4 mb-4">
-                {replies.filter(r => r.parent_id === post.id).map(reply => (
-                  <div key={reply.id} className="bg-gray-50/50 p-3 rounded-xl group/reply relative">
-                    <div className="flex justify-between items-start mb-1">
-                      <Link href={`/users/${reply.user_id}`} className="font-bold text-gray-500 block text-[10px] hover:underline">
-                        {reply.authorProfile?.full_name}
-                      </Link>
-                    </div>
-                    <span className="text-gray-700 text-xs leading-normal whitespace-pre-wrap">{reply.content}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="mt-2">
-              <ReplyForm parentId={post.id} />
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* ★ フィルタリング機能付きタイムラインを表示 ★ */}
+      {mainPosts.length === 0 ? (
+        <div className="text-center py-20 bg-white rounded-[1.5rem] border border-dashed border-gray-200">
+          <p className="text-gray-400 text-sm">まだ投稿がありません。</p>
+        </div>
+      ) : (
+        <FilteredTimeline 
+          mainPosts={mainPosts} 
+          replies={replies} 
+          user={user} 
+          friendIds={friendIds} 
+        />
+      )}
     </div>
   );
 }

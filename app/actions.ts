@@ -165,21 +165,26 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 }
 
 /**
- * 4. 投稿・返信作成（画像アップロード対応）
+ * 4. 投稿・返信作成
  */
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
-  const imageFile = formData.get('image') as File | null; 
+  
+  // 画像と動画の両方を FormData から取得
+  const imageFile = formData.get('image') as File | null;
+  const videoFile = formData.get('video') as File | null;
   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect('/login');
 
+  // AIによる投稿内容チェック
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return { ...result, errorType: 'toxic-content' };
 
   let imageUrl = null;
+  let videoUrl = null;
 
   // 画像アップロード処理
   if (imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
@@ -187,23 +192,51 @@ export async function createPost(formData: FormData) {
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
     
     const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('posts') 
+      .from('post_images') 
       .upload(fileName, imageFile);
 
     if (!uploadError) {
       const { data: { publicUrl } } = supabase.storage
-        .from('posts')
+        .from('post_images')
         .getPublicUrl(fileName);
       imageUrl = publicUrl;
+    } else {
+      console.error("Image upload error:", uploadError.message);
     }
   }
 
-  await supabase.from('posts').insert({ 
+  // 動画アップロード処理 (追加)
+  if (videoFile && videoFile.size > 0 && videoFile.name !== 'undefined') {
+    const fileExt = videoFile.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+    
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('videos') 
+      .upload(fileName, videoFile);
+
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage
+        .from('videos')
+        .getPublicUrl(fileName);
+      videoUrl = publicUrl;
+    } else {
+      console.error("Video upload error:", uploadError.message);
+    }
+  }
+
+  // データベースへの挿入 (image_url と video_url の両方を指定)
+  const { error: insertError } = await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
     privacy_level: privacyLevel,
-    image_url: imageUrl 
+    image_url: imageUrl,
+    video_url: videoUrl
   });
+
+  if (insertError) {
+    console.error("Database insert error:", insertError.message);
+    return { isToxic: false, error: "保存に失敗しました" };
+  }
 
   revalidatePath('/');
   revalidatePath(`/users/${user.id}`);
@@ -260,7 +293,7 @@ export async function acceptFriendRequest(formData: FormData) {
 }
 
 /**
- * 6. プロフィール更新
+ * 6. プロフィール更新・通報
  */
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
@@ -278,7 +311,8 @@ export async function updateProfile(formData: FormData) {
     const fileName = `${user.id}/${Date.now()}.${avatarFile.name.split('.').pop()}`;
     const { error: uploadError } = await supabase.storage.from('avatars').upload(fileName, avatarFile, { upsert: true });
     if (!uploadError) {
-      avatarUrl = supabase.storage.from('avatars').getPublicUrl(fileName).data.publicUrl;
+      const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(fileName);
+      avatarUrl = publicUrl;
     }
   }
 

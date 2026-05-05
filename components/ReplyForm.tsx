@@ -3,9 +3,10 @@
 import { useState, useTransition } from 'react'
 import { createReply } from '@/app/actions'
 import { toast } from 'sonner'
-import Image from 'next/image'
+
 
 export default function ReplyForm({ parentId }: { parentId: string }) {
+  const [showForm, setShowForm] = useState(false) // フォームの表示フラグ
   const [content, setContent] = useState('')
   const [isPending, startTransition] = useTransition()
   const [errorData, setErrorData] = useState<any>(null)
@@ -17,17 +18,13 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
     startTransition(async () => {
       const result: any = await createReply(formData)
       
-      // AIが「有害」と判定した場合
       if (result && result.isToxic) {
-        // ここでエラーデータをセットすることで、言い換え案（suggestions）が表示されるようになります
         setErrorData(result)
-        
-        // トースト（ロボット）だけを出さないようにしています
         console.log("Toxic content detected, showing suggestions only.");
       } else {
-        // 成功時
         setContent('')
         setErrorData(null)
+        setShowForm(false) // 送信成功時にフォームを閉じる
         toast.success("送信完了")
       }
     })
@@ -36,18 +33,39 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
   const handleClear = () => {
     setContent('')
     setErrorData(null)
+    setShowForm(false) // クリア時にフォームを閉じる
     toast.dismiss()
   }
 
   const handleSuggestionClick = (suggestedText: string) => {
     setContent(suggestedText)
     setErrorData(null)
-    // 別の候補を選び直せるよう、一度クリアした後に送信待ち状態にするなどの処理は不要です
   }
 
+  // --- フォームを表示していない時の表示 ---
+  if (!showForm) {
+    return (
+      <button 
+        onClick={() => setShowForm(true)}
+        className="mt-2 flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-black transition-colors px-2 py-1"
+      >
+        <span></span>
+        コメント…
+      </button>
+    )
+  }
+
+  // --- フォームを表示している時の表示 ---
   return (
-    <div className="mt-4">
-      {/* 言い換え案チップ：errorDataがあるときだけ表示 */}
+    <div className="mt-4 animate-in fade-in slide-in-from-top-1 duration-300">
+      <div className="flex justify-between items-center mb-2 px-2">
+        <span className="text-[10px] font-bold text-gray-400 uppercase"></span>
+        <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-black">
+          <span>×</span>
+        </button>
+      </div>
+
+      {/* 言い換え案チップ */}
       {errorData?.suggestions && errorData.suggestions.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-3 px-2 animate-in fade-in slide-in-from-bottom-2">
           {errorData.suggestions.map((text: string, i: number) => (
@@ -74,8 +92,9 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
           name="content" 
           value={content}
           onChange={(e) => setContent(e.target.value)}
-          placeholder={errorData ? "変換しましょう..." : "返信する..."}
+          placeholder={errorData ? "変換しましょう..." : "コメントする…"}
           autoComplete="off"
+          autoFocus // フォームが開いた瞬間にすぐ入力できるように
           className="flex-1 bg-transparent px-4 py-2 text-base outline-none text-black placeholder-gray-400" 
           required 
         />
@@ -84,7 +103,7 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
           disabled={isPending}
           className="bg-black text-white text-xs font-bold px-5 py-2 rounded-full disabled:bg-gray-300"
         >
-          {isPending ? "確認中" : "返信"}
+          {isPending ? "確認中" : "送信"}
         </button>
       </form>
 
@@ -98,7 +117,7 @@ export default function ReplyForm({ parentId }: { parentId: string }) {
             onClick={handleClear} 
             className="text-[10px] font-black text-gray-400 hover:text-gray-600 uppercase tracking-widest"
           >
-            CLEAR
+            CANCEL
           </button>
         </div>
       )}

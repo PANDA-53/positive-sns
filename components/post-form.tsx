@@ -135,9 +135,7 @@ export default function PostForm() {
         </div>
       )}
 
-      {/* 外側のパディングを p-6 -> p-4 に、角丸を 1.5rem に凝縮 */}
       <form id="post-form" onSubmit={handleSubmit} className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-100 transition-all">
-        {/* textareaを1行(rows={1})にし、パディングとフォントサイズを微調整 */}
         <textarea 
           name="content" 
           value={content}
@@ -150,12 +148,22 @@ export default function PostForm() {
           required 
         />
 
+        {/* メディア表示エリア: ネガティブマージン -mx-4 で親の p-4 を打ち消し object-cover で余白をなくす */}
         {previewUrl && (
-          <div className="relative mt-3 rounded-xl overflow-hidden border border-gray-100 bg-black max-h-[300px] flex items-center justify-center">
+          <div className="relative -mx-4 mt-3 border-y border-gray-100 bg-black max-h-[300px] flex items-center justify-center overflow-hidden">
             {isVideo ? (
-              <video src={previewUrl} className="w-full h-auto max-h-[300px] object-contain" controls muted />
+              <video 
+                src={previewUrl} 
+                className="w-full h-auto max-h-[300px] object-cover" 
+                controls 
+                muted 
+              />
             ) : (
-              <img src={previewUrl} alt="Preview" className="w-full h-auto max-h-[300px] object-contain" />
+              <img 
+                src={previewUrl} 
+                alt="Preview" 
+                className="w-full h-auto max-h-[300px] object-cover" 
+              />
             )}
             <button 
               type="button" 
@@ -171,10 +179,8 @@ export default function PostForm() {
           </div>
         )}
 
-        {/* 下部アクションエリアの余白を mt-6 -> mt-3 に削減 */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mt-3">
           <div className="flex items-center gap-3">
-            {/* メディア選択ボタン: p-3 -> p-2 */}
             <label className="cursor-pointer p-2 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all flex items-center">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-gray-500">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375 0 11-.75 0 .375.375 0 01.75 0z" />
@@ -182,7 +188,6 @@ export default function PostForm() {
               <input ref={fileInputRef} type="file" name={isVideo ? "video" : "image"} accept="image/*,video/*" className="hidden" onChange={handleFileChange} />
             </label>
 
-            {/* スライド式プライバシー・スイッチ: 高さ w-20 h-10 -> w-16 h-8 */}
             <div className="flex items-center gap-2">
               <div 
                 onClick={() => setPrivacyLevel(prev => prev === 'public' ? 'friends' : 'public')}

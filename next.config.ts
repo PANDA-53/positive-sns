@@ -10,18 +10,19 @@ const withPWA = withPWAInit({
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // これが最重要：空のターボ設定を入れることで、Vercelの自動ターボを無効化します
   experimental: {
-    turbo: {
-      // ターボ設定を空にする
+    // 既存のターボ設定
+    turbo: {},
+    // 動画アップロードのために追加した制限拡張設定
+    serverActions: {
+      bodySizeLimit: '50mb', 
     },
   },
-  // webpack設定を明示的に記述して、webpackの使用を強制します
+  // webpack設定を明示的に記述
   webpack: (config) => {
     return config;
   },
 };
 
+// PWA設定で包んだ nextConfig を一度だけエクスポートする
 export default withPWA(nextConfig);
-
-
