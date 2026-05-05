@@ -307,3 +307,47 @@ export async function cancelFriendship(targetUserId: string) {
   await supabase.from('friendships').delete().or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
   revalidatePath('/');
 }
+
+// app/actions.ts
+
+export async function fetchUserProfileData(targetUserId: string, currentUserId: string) {
+  const supabase = await createClient();
+
+  // 1. プロフィールと投稿、フレンド関係を並列で取得
+  const [profileRes, postsRes, friendshipsRes] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', targetUserId).single(),
+    supabase.from('posts').select(`*, reactions (type, user_id)`).eq('user_id', targetUserId).order('created_at', { ascending: false }),
+    supabase.from('friendships').select('*').or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`)
+  ]);
+
+  const profile = profileRes.data;
+  const posts = postsRes.data || [];
+  const friendshipsRaw = friendshipsRes.data || [];
+
+  // 2. リアクションやフレンド状態の整形
+  const formattedPosts = posts.map(post => {
+    const reactions = post.reactions || [];
+    const relation = friendshipsRaw.find(f => 
+      (String(f.user_id) === String(currentUserId) && String(f.friend_id) === String(targetUserId)) || 
+      (String(f.user_id) === String(targetUserId) && String(f.friend_id) === String(currentUserId))
+    );
+    
+    return {
+      ...post,
+      authorProfile: profile, // 自分のページなのでプロフィールは同一
+      awesomeCount: reactions.filter((r: any) => r.type === 'awesome').length,
+      hugCount: reactions.filter((r: any) => r.type === 'hug').length,
+      myReaction: reactions.find((r: any) => r.user_id === currentUserId)?.type || null,
+      
+      friendStatus: targetUserId === currentUserId ? 'me' : (relation?.status || 'none')
+    };
+  });
+
+  return {
+    profile,
+    mainPosts: formattedPosts.filter(p => !p.parent_id),
+    replies: formattedPosts.filter(p => p.parent_id),
+    isMe: targetUserId === currentUserId, // ★ これを追加！
+    defaultAvatar: "https://www.gravatar.com/avatar/?d=mp"
+  };
+}
