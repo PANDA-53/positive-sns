@@ -7,7 +7,6 @@ import { toast } from 'sonner'
 import { deletePost } from '@/app/actions'
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
-// Lucideアイコンをインポート
 import { Globe, Lock, MessageCircle, Trash2 } from 'lucide-react'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
@@ -106,7 +105,6 @@ export default function FilteredTimeline({
                       <span className="text-[9px] text-gray-400 font-bold">
                         {new Date(post.created_at).toLocaleDateString()}
                       </span>
-                      {/* プライバシーアイコンを Lucide アイコンに変更 */}
                       <span className="opacity-80" style={{ color: GOLD_COLOR }}>
                         {post.privacy_level === 'public' ? (
                           <Globe size={13} strokeWidth={2.5} />
@@ -119,13 +117,38 @@ export default function FilteredTimeline({
                 </Link>
                 {post.user_id === user?.id && (
                   <button onClick={() => handleDelete(post.id)} className="p-2 text-gray-300 hover:text-rose-400 transition-colors">
-                    {/* ゴミ箱も Lucide の Trash2 に変更すると統一感が出ます */}
                     <Trash2 size={18} strokeWidth={2} />
                   </button>
                 )}
               </div>
 
-              <p className="text-[15px] text-gray-800 mb-4 whitespace-pre-wrap leading-snug">{post.content}</p>
+              <p className="text-[15px] text-gray-800 mb-4 whitespace-pre-wrap leading-snug px-1">
+                {post.content}
+              </p>
+
+              {/* ユーザーページと同じメディア表示設定 */}
+{post.video_url ? (
+  <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
+    <video 
+      src={post.video_url} 
+      controls 
+      muted 
+      loop 
+      autoPlay 
+      playsInline 
+      className="w-full h-auto block" 
+    />
+  </div>
+) : post.image_url && (
+  <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
+    <img 
+      src={post.image_url} 
+      alt="" 
+      className="w-full h-auto block" 
+      loading="lazy"
+    />
+  </div>
+)}
 
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
                 <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
@@ -135,7 +158,6 @@ export default function FilteredTimeline({
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all ${isCommentOpen ? 'bg-amber-50' : 'text-gray-400'}`}
                   style={isCommentOpen ? { color: GOLD_COLOR } : {}}
                 >
-                  {/* コメントアイコンを Lucide の MessageCircle に変更 */}
                   <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? "currentColor" : "none"} />
                   <span className="text-xs font-black">{postReplies.length}</span>
                 </button>
