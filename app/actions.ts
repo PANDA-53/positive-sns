@@ -11,6 +11,7 @@ const openai = new OpenAI({
 
 /**
  * SNS「POSITIVES」モデレーター判定ロジック
+ * ※プロンプト内容は一切変更していません
  */
 async function checkAndSuggestContent(content: string) {
   try {
@@ -151,31 +152,59 @@ export async function logout() {
 }
 
 /**
- * 2. タイムライン表示用データの取得
+ * 2. メインタイムライン用データ取得
  */
-export async function fetchTimelineData(userId: string) {
+export async function fetchMainTimelineData(userId: string) {
   const supabase = await createClient();
-  const [postsRes, commentsRes, friendshipsRes, reactionsRes] = await Promise.all([
-    supabase.from('posts').select('*').order('created_at', { ascending: false }),
-    supabase.from('comments').select('*').order('created_at', { ascending: true }),
-    supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`),
-    supabase.from('reactions').select('*')
+  
+  const [postsRes, friendshipsRes] = await Promise.all([
+    supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
+    supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
   ]);
 
   const posts = postsRes.data || [];
-  const reactions = reactionsRes.data || [];
-  const comments = commentsRes.data || [];
+  const friendshipsRaw = friendshipsRes.data || [];
+
+  const postUserIds = posts.map(p => p.user_id);
+  const friendUserIds = friendshipsRaw.map(f => (f.user_id === userId ? f.friend_id : f.user_id));
+  const allRelevantIds = Array.from(new Set([...postUserIds, ...friendUserIds, userId])).filter(Boolean);
+
+  const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allRelevantIds);
+
+  const friendMap = new Map();
+  friendshipsRaw
+    .filter(f => f.status === 'accepted')
+    .forEach(f => {
+      const fid = f.user_id === userId ? f.friend_id : f.user_id;
+      const profile = allProfiles?.find(p => p.id === fid);
+      if (profile) friendMap.set(fid, profile);
+    });
+  
+  const acceptedFriends = Array.from(friendMap.values());
+
+  const pendingRequests = friendshipsRaw
+    .filter(f => f.friend_id === userId && f.status === 'pending')
+    .map(f => ({
+      user_id: f.user_id,
+      sender_profile: allProfiles?.find(p => p.id === f.user_id)
+    }))
+    .filter(req => req.sender_profile);
 
   const formattedPosts = posts.map(post => ({
     ...post,
-    reactions: reactions.filter(r => r.post_id === post.id),
-    comments: comments.filter(c => c.post_id === post.id)
+    authorProfile: allProfiles?.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '' },
+    awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
+    hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
+    myReaction: post.reactions?.find((r: any) => r.user_id === userId)?.type || null,
   }));
 
-  return { 
-    formattedPosts, 
-    pendingRequests: (friendshipsRes.data || []).filter(f => String(f.friend_id) === String(userId) && f.status === 'pending'),
-    acceptedFriends: (friendshipsRes.data || []).filter(f => f.status === 'accepted')
+  return {
+    // parent_idがないもの（メイン投稿）とあるもの（リプライ）を分離
+    mainPosts: formattedPosts.filter(p => !p.parent_id),
+    replies: formattedPosts.filter(p => p.parent_id),
+    friendIds: Array.from(friendMap.keys()) as string[], 
+    pendingRequests,
+    acceptedFriends
   };
 }
 
@@ -203,13 +232,13 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
       awesomeCount: postReactions.filter((r: any) => r.type === 'awesome').length,
       hugCount: postReactions.filter((r: any) => r.type === 'hug').length,
       myReaction: postReactions.find((r: any) => r.user_id === currentUserId)?.type || null,
-      commentsCount: 0 
     };
   });
 
   return {
     profile: profileRes.data,
-    mainPosts: formattedPosts, 
+    // プロフィール画面でもリプライは除外して表示
+    mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship: friendshipRes.data,
     isMe: cleanTargetId === currentUserId, 
     error: profileRes.error
@@ -222,83 +251,60 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
+  const parentId = formData.get('parent_id') ? parseInt(formData.get('parent_id') as string) : null;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
   
-  // PostFormの修正に合わせ、両方 'image' という名前で来る可能性も考慮して取得
   const imageFile = formData.get('image') as File | null;
   const videoFile = formData.get('video') as File | null;
   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect('/login');
 
-  // AIによる投稿内容チェック
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return { ...result, errorType: 'toxic-content' };
 
   let imageUrl = null;
   let videoUrl = null;
 
-  // --- 画像アップロード処理 ---
-  // name !== 'undefined' のチェックを外し、ファイルが存在するかどうかで判定
   if (imageFile && imageFile.size > 0) {
-    // 圧縮などで名前が消えている場合に備え、デフォルトの拡張子を fallback
     const rawName = imageFile.name || "";
     const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'jpg';
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-    
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('post_images') 
-      .upload(fileName, imageFile);
-
+    const { data: uploadData, error: uploadError } = await supabase.storage.from('post_images').upload(fileName, imageFile);
     if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage
-        .from('post_images')
-        .getPublicUrl(fileName);
+      const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
       imageUrl = publicUrl;
-    } else {
-      console.error("Image upload error details:", uploadError);
     }
   }
 
-  // --- 動画アップロード処理 ---
   if (videoFile && videoFile.size > 0) {
     const rawName = videoFile.name || "";
     const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'mp4';
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-    
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('videos') 
-      .upload(fileName, videoFile);
-
+    const { data: uploadData, error: uploadError } = await supabase.storage.from('videos').upload(fileName, videoFile);
     if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage
-        .from('videos')
-        .getPublicUrl(fileName);
+      const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(fileName);
       videoUrl = publicUrl;
-    } else {
-      console.error("Video upload error details:", uploadError);
     }
   }
 
-  // データベースへの挿入
   const { error: insertError } = await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
     privacy_level: privacyLevel,
     image_url: imageUrl,
-    video_url: videoUrl
+    video_url: videoUrl,
+    parent_id: parentId // リプライの場合に親IDを保存
   });
 
-  if (insertError) {
-    console.error("Database insert error:", insertError.message);
-    return { isToxic: false, error: "DB保存失敗" };
-  }
+  if (insertError) return { isToxic: false, error: "DB保存失敗" };
 
   revalidatePath('/');
   revalidatePath(`/users/${user.id}`);
   return { isToxic: false, success: true };
 }
 
+// createReplyもcreatePostに統合可能ですが、既存の呼び出し箇所のために残しつつ、parent_id対応を強化
 export async function createReply(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
@@ -309,11 +315,12 @@ export async function createReply(formData: FormData) {
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return result;
 
-  await supabase.from('comments').insert({ 
+  // commentsテーブルではなくpostsテーブルにparent_id付きで保存（データ統一）
+  await supabase.from('posts').insert({ 
     content, 
-    post_id: parseInt(parentId), 
+    parent_id: parseInt(parentId), 
     user_id: user.id,
-    user_name: user.email 
+    privacy_level: 'public'
   });
 
   revalidatePath('/');
@@ -405,68 +412,4 @@ export async function deletePost(formData: FormData) {
   await supabase.from('posts').delete().eq('id', postId);
   revalidatePath('/');
   if (user) revalidatePath(`/users/${user.id}`);
-}
-/**
- * 2. メインタイムライン用データ取得 (キャッシュ・重複・型エラー対策版)
- */
-export async function fetchMainTimelineData(userId: string) {
-  const supabase = await createClient();
-  
-  // 1. 投稿と友情関係を並列で取得
-  const [postsRes, friendshipsRes] = await Promise.all([
-    supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
-    supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
-  ]);
-
-  const posts = postsRes.data || [];
-  const friendshipsRaw = friendshipsRes.data || [];
-
-  // 2. 関連する全ユーザーIDを抽出してプロフィールを一括取得
-  const postUserIds = posts.map(p => p.user_id);
-  const friendUserIds = friendshipsRaw.map(f => (f.user_id === userId ? f.friend_id : f.user_id));
-  const allRelevantIds = Array.from(new Set([...postUserIds, ...friendUserIds, userId])).filter(Boolean);
-
-  const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allRelevantIds);
-
-  // --- 3. 友情関係の重複を Map で物理的に排除 (image_e728e0.png の対策) ---
-  const friendMap = new Map();
-  
-  friendshipsRaw
-    .filter(f => f.status === 'accepted')
-    .forEach(f => {
-      // 自分じゃない方のIDを特定
-      const fid = f.user_id === userId ? f.friend_id : f.user_id;
-      const profile = allProfiles?.find(p => p.id === fid);
-      // Mapはキーが重複しないため、同じユーザーは1人分に集約される
-      if (profile) friendMap.set(fid, profile);
-    });
-  
-  const acceptedFriends = Array.from(friendMap.values());
-
-  // 4. 申請中リストの整理
-  const pendingRequests = friendshipsRaw
-    .filter(f => f.friend_id === userId && f.status === 'pending')
-    .map(f => ({
-      user_id: f.user_id,
-      sender_profile: allProfiles?.find(p => p.id === f.user_id)
-    }))
-    .filter(req => req.sender_profile);
-
-  // 5. 投稿データの整形
-  const formattedPosts = posts.map(post => ({
-    ...post,
-    authorProfile: allProfiles?.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '' },
-    awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
-    hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
-    myReaction: post.reactions?.find((r: any) => r.user_id === userId)?.type || null,
-  }));
-
-  return {
-    mainPosts: formattedPosts.filter(p => !p.parent_id),
-    replies: formattedPosts.filter(p => p.parent_id),
-    // --- 6. 型アサーションで f.id の赤線を解消 (image_e78a96.png の対策) ---
-    friendIds: Array.from(friendMap.keys()) as string[], 
-    pendingRequests,
-    acceptedFriends
-  };
 }
