@@ -382,7 +382,9 @@ export async function updatePushSubscription(subscriptionJson: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   await supabase.from('profiles').update({ push_subscription: JSON.parse(subscriptionJson) }).eq('id', user.id);
-  revalidatePath('/profile');
+  
+  // ★追加：保存後にキャッシュを再検証してリセットを防ぐ
+  revalidatePath('/', 'layout');
 }
 
 export async function reportPost(postId: number) {

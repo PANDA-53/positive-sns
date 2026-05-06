@@ -4,17 +4,19 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { ReactionButtons } from './reaction-buttons'
 import PostForm from './post-form'
-import { ReportButton } from './report-button' // 作成済みのリポートボタンをインポート
+import { ReportButton } from './report-button'
 import { toast } from 'sonner'
 import { deletePost } from '@/app/actions'
-import { useQueryClient } from '@tanstack/react-query'
+import { useRouter } from 'next/navigation' // useRouterをインポート
+
+const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
 export default function FilteredTimeline({ mainPosts, replies, user, friendIds }: any) {
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'all' | 'friends'>('all');
   const [openMenuId, setOpenMenuId] = useState<number | null>(null);
   
-  const queryClient = useQueryClient();
+  const router = useRouter(); // routerを初期化
 
   const visiblePosts = mainPosts.filter((post: any) => {
     const hasPermission = 
@@ -26,8 +28,6 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
     if (viewMode === 'friends') return post.privacy_level === 'friends';
     return true;
   });
-
-  // handleReport関数はReportButton内で完結するため削除しました
 
   const handleDelete = async (postId: number) => {
     if (!window.confirm('この投稿を削除してもよろしいですか？（この操作は取り消せません）')) return;
@@ -45,7 +45,8 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
   };
 
   const handleSuccess = () => {
-    queryClient.invalidateQueries({ queryKey: ['main-timeline', user.id] });
+    // React Queryへの依存を排除し、Next.jsのサーバー再検証を実行
+    router.refresh();
   };
 
   return (
@@ -81,7 +82,6 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
 
         return (
           <div key={`timeline-${post.id}`} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5 relative">
-            {/* ヘッダー部分 */}
             <div className="flex items-center justify-between mb-4">
               <Link href={`/users/${post.user_id}`} className="flex items-center gap-3 active:opacity-70">
                 <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
@@ -116,7 +116,6 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
                       <>
                         <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
                         <div className="absolute right-0 mt-0 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl py-2 z-20 animate-in fade-in zoom-in-95 duration-200">
-                          {/* ★ 作成済みの ReportButton に差し替え */}
                           <div className="w-full flex justify-start" onClick={() => setOpenMenuId(null)}>
                             <ReportButton postId={post.id} />
                           </div>
@@ -136,12 +135,10 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
               </div>
             </div>
 
-            {/* コンテンツ部分 */}
             <Link href={`/posts/${post.id}`}>
               <p className="text-[15px] text-gray-800 mb-4 whitespace-pre-wrap leading-snug">{post.content}</p>
             </Link>
 
-            {/* メディア */}
             {post.video_url ? (
               <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
                 <video 
@@ -162,7 +159,6 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
               </div>
             )}
 
-            {/* リアクション・コメントボタン */}
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
               <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
               <button onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all ${isCommentOpen ? 'bg-gray-100 text-gray-800' : 'text-gray-400'}`}>
@@ -173,7 +169,6 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
               </button>
             </div>
 
-            {/* リプライエリア */}
             {isCommentOpen && (
               <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2">
                 {postReplies.length > 0 && (
@@ -201,5 +196,3 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
     </div>
   )
 }
-
-const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
