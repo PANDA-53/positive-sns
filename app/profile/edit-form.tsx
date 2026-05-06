@@ -1,11 +1,13 @@
 "use client"
 
-import { useState, useEffect } from 'react' // useEffectを追加
+import { useState, useEffect } from 'react'
 import { updateProfile, updatePushSubscription } from '../actions'
 import Link from 'next/link'
 import imageCompression from 'browser-image-compression'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
+
+const GOLD_COLOR = "#B8860B";
 
 // --- 通知設定用サブコンポーネント ---
 function NotificationSetter({ userId, initialSubscription }: { userId: string, initialSubscription: any }) {
@@ -14,7 +16,6 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
   
   const VAPID_PUBLIC_KEY = "BJEoIlcIMB4uXEChjfcDjdzdu2wNrVgklCvK2Qyjbulq0FBoM9IFcOPaI3gsv_ZEdAgnngCVICjIqO5baG0ZIvs";
 
-  // ★ 追加：マウント時にブラウザの状態を直接確認して維持する
   useEffect(() => {
     async function checkSubscription() {
       if ('serviceWorker' in navigator && 'PushManager' in window) {
@@ -40,7 +41,6 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
 
     setIsSubscribing(true);
     try {
-      // sw.jsの登録を明示的に行う
       await navigator.serviceWorker.register('/sw.js');
       const registration = await navigator.serviceWorker.ready;
       
@@ -61,13 +61,13 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
   };
 
   return (
-    <div className="bg-gray-50 p-5 rounded-[1.5rem] border border-gray-100 space-y-3 mt-4">
+    <div className="bg-[#FAF9F6] p-5 rounded-[1.5rem] border border-[#B8860B]/10 space-y-3 mt-4 shadow-sm">
       <div className="flex items-center justify-between px-1">
         <div>
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Push Notification</p>
+          <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: GOLD_COLOR }}>Push Notification</p>
           <p className="text-[11px] text-gray-500 font-bold">リアクションや返信をリアルタイムで通知</p>
         </div>
-        <div className={`w-2 h-2 rounded-full ${hasSubscription ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+        <div className={`w-2 h-2 rounded-full ${hasSubscription ? 'animate-pulse' : 'bg-gray-300'}`} style={hasSubscription ? { backgroundColor: GOLD_COLOR } : {}} />
       </div>
 
       <button
@@ -76,9 +76,10 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
         disabled={isSubscribing || hasSubscription}
         className={`w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${
           hasSubscription 
-          ? "bg-white text-gray-400 border border-gray-200 cursor-default" 
-          : "bg-green-600 text-white shadow-md hover:bg-green-700"
+          ? "bg-white text-gray-400 border border-gray-100 cursor-default" 
+          : "text-white shadow-md shadow-[#B8860B]/20"
         }`}
+        style={!hasSubscription && !isSubscribing ? { backgroundColor: GOLD_COLOR } : {}}
       >
         {isSubscribing ? "Setting up..." : hasSubscription ? "Notifications Active" : "Enable Push Notifications"}
       </button>
@@ -135,20 +136,25 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
   }
 
   return (
-    <main className="min-h-screen bg-[#F2F2F2] text-black pb-12 font-sans pt-6">
+    /* 修正箇所：mainからbg/styleでの背景色指定を完全に削除。layout.tsxのbody色が透けて見えます。 */
+    <main className="min-h-screen pb-12 font-sans pt-6">
       <div className="max-w-2xl mx-auto px-4">
-        <section className="bg-white p-8 rounded-[2rem] shadow-sm border border-gray-100">
+        {/* 白いカードがベージュの上で際立つよう、少しだけシャドウを強化しています */}
+        <section className="bg-white p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#E2DED0]">
           <form onSubmit={handleSubmit} className="space-y-8">
             
             <div className="flex flex-col items-center gap-4">
-              <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-gray-50 shadow-md bg-gray-100">
+              <div className="w-24 h-24 rounded-full overflow-hidden border-4 shadow-md bg-[#FDFCF9]" style={{ borderColor: GOLD_COLOR }}>
                 <img 
                   src={previewUrl || defaultAvatar} 
                   className="w-full h-full object-cover" 
                   alt="Avatar" 
                 />
               </div>
-              <label className="cursor-pointer bg-gray-50 text-gray-600 px-6 py-2 rounded-full text-[10px] font-black border border-gray-200 hover:bg-gray-100 transition-all uppercase tracking-widest active:scale-95">
+              <label 
+                className="cursor-pointer px-6 py-2 rounded-full text-[10px] font-black border transition-all uppercase tracking-widest active:scale-95 shadow-sm"
+                style={{ backgroundColor: '#F9F6E5', color: GOLD_COLOR, borderColor: '#B8860B33' }}
+              >
                 {isCompressing ? "最適化中..." : "写真を変更"}
                 <input 
                   name="avatar" 
@@ -163,22 +169,22 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
 
             <div className="space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">User Name</label>
+                <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>User Name</label>
                 <input 
                   name="fullName" 
                   type="text" 
                   defaultValue={initialProfile?.full_name || ''} 
-                  className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-black border-none focus:ring-2 focus:ring-black/5 transition-all text-sm font-bold" 
+                  className="w-full p-4 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all text-sm font-bold shadow-inner" 
                   required 
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest ml-4">Bio</label>
+                <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>Bio</label>
                 <textarea 
                   name="bio" 
                   defaultValue={initialProfile?.bio || ''} 
-                  className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-black border-none focus:ring-2 focus:ring-black/5 transition-all min-h-[120px] resize-none text-sm leading-relaxed"
+                  className="w-full p-4 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all min-h-[120px] resize-none text-sm leading-relaxed shadow-inner"
                 />
               </div>
 
@@ -192,14 +198,15 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
               <button 
                 type="submit" 
                 disabled={isCompressing}
-                className="w-full bg-black text-white font-black py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-all text-[11px] uppercase tracking-[0.2em] disabled:bg-gray-400"
+                className="w-full text-white font-black py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-all text-[11px] uppercase tracking-[0.2em] disabled:bg-gray-400"
+                style={!isCompressing ? { backgroundColor: GOLD_COLOR } : {}}
               >
                 {isCompressing ? "保存中..." : "Save Changes"}
               </button>
               
               <Link 
                 href={userPagePath}
-                className="w-full bg-gray-100 text-gray-400 font-black py-4 rounded-2xl text-center block text-[11px] uppercase tracking-[0.2em] active:scale-[0.98] transition-all"
+                className="w-full bg-[#F5F5F0] text-gray-400 font-black py-4 rounded-2xl text-center block text-[11px] uppercase tracking-[0.2em] active:scale-[0.98] transition-all hover:bg-[#EBEBE0]"
               >
                 Cancel
               </Link>

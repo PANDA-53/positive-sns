@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
+  /* ここをベージュに変更 */
+  --background: #F0EDE4; 
   --foreground: #171717;
 }
 

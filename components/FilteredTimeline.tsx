@@ -7,8 +7,11 @@ import { toast } from 'sonner'
 import { deletePost } from '@/app/actions'
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
+// Lucideアイコンをインポート
+import { Globe, Lock, MessageCircle, Trash2 } from 'lucide-react'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
+const GOLD_COLOR = "#B8860B"; 
 
 interface FilteredTimelineProps {
   mainPosts: any[];
@@ -29,11 +32,9 @@ export default function FilteredTimeline({
   const [viewMode, setViewMode] = useState<'all' | 'friends'>('all');
   const router = useRouter();
 
-  // ★【究極のガード】
-  // mainPostsが「配列」として認識されるまで、以下の処理（filterなど）を絶対にさせない
   if (!Array.isArray(mainPosts)) {
     return (
-      <div className="text-center py-10 text-gray-400 text-[10px] font-bold uppercase tracking-widest">
+      <div className="text-center py-10 text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD_COLOR }}>
         Syncing Timeline...
       </div>
     );
@@ -66,16 +67,29 @@ export default function FilteredTimeline({
 
   return (
     <div className="space-y-4 pb-24">
-      {/* フィード切り替え */}
       <div className="flex justify-center mb-6">
-        <div className="bg-gray-100/80 p-1 rounded-full flex gap-1 border border-gray-200 shadow-inner">
-          <button onClick={() => setViewMode('all')} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'all' ? 'bg-green-500 text-white shadow-md' : 'text-gray-400'}`}>Public Feed</button>
-          <button onClick={() => setViewMode('friends')} className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'friends' ? 'bg-blue-500 text-white shadow-md' : 'text-gray-400'}`}>Friends Only</button>
+        <div className="bg-white p-1.5 rounded-full flex gap-1 border border-gray-100 shadow-sm">
+          <button 
+            onClick={() => setViewMode('all')} 
+            className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'all' ? 'text-white shadow-md' : 'text-gray-400'}`}
+            style={viewMode === 'all' ? { backgroundColor: GOLD_COLOR } : {}}
+          >
+            Public Feed
+          </button>
+          <button 
+            onClick={() => setViewMode('friends')} 
+            className={`px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${viewMode === 'friends' ? 'text-white shadow-md' : 'text-gray-400'}`}
+            style={viewMode === 'friends' ? { backgroundColor: GOLD_COLOR } : {}}
+          >
+            Friends Only
+          </button>
         </div>
       </div>
 
       {visiblePosts.length === 0 ? (
-        <div className="text-center py-20 text-gray-300 text-[10px] font-bold uppercase tracking-widest">No posts to show</div>
+        <div className="text-center py-20 text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD_COLOR }}>
+          No posts to show
+        </div>
       ) : (
         visiblePosts.map((post: any) => {
           const isCommentOpen = activeCommentId === post.id;
@@ -84,38 +98,29 @@ export default function FilteredTimeline({
           return (
             <div key={`timeline-item-${post.id}`} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5 relative">
               <div className="flex items-center justify-between mb-4">
-                 {/* 投稿者情報セクション */}
-<Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
-  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50" alt="" />
-  <div className="flex flex-col">
-    <span className="text-[13px] font-bold text-gray-800">{post.authorProfile?.full_name}</span>
-    
-    <div className="flex items-center gap-1.5 mt-0.5">
-      {/* 日付表示 */}
-      <span className="text-[9px] text-gray-400 font-bold">
-        {new Date(post.created_at).toLocaleDateString()}
-      </span>
-
-      {/* プライバシーアイコンの分岐 */}
-      {post.privacy_level === 'public' ? (
-        <span title="公開" className="text-green-500">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-            <path d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm-1.002-1.05c-.322-.05-.623-.158-.894-.316a5.485 5.485 0 0 1-.873-.655 1.49 1.49 0 0 1-.231-.284V11.5a1.5 1.5 0 0 1 1.5-1.5h1a1.5 1.5 0 0 1 1.5 1.5v.19a5.508 5.508 0 0 1 2.274 1.554 5.503 5.503 0 0 1-4.274 2.206Zm-3.567-2.31c.143.19.324.363.535.513.14.1.296.183.46.25V11.5c0-.206.042-.403.118-.582a1.49 1.49 0 0 1-.22-.387l-.427-1.069A1.5 1.5 0 0 1 3.5 8.5v-1a1.5 1.5 0 0 1 .536-1.144A5.474 5.474 0 0 1 5.512 4.19v.31a1.5 1.5 0 0 0 1.5 1.5h1a1.5 1.5 0 0 0 1.5-1.5v-.868a5.5 5.5 0 0 1 3.824 5.083 1.5 1.5 0 0 0-1.336-.715h-.5a1.5 1.5 0 0 0-1.5 1.5v.19a3.003 3.003 0 0 0-1.726 2.76 5.5 5.5 0 0 1-5.84-2.748Z" />
-          </svg>
-        </span>
-      ) : (
-        <span title="フレンド限定" className="text-blue-500">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
-            <path fillRule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clipRule="evenodd" />
-          </svg>
-        </span>
-      )}
-    </div>
-  </div>
-</Link>
+                <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
+                  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50" alt="" />
+                  <div className="flex flex-col">
+                    <span className="text-[13px] font-bold text-gray-800">{post.authorProfile?.full_name}</span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[9px] text-gray-400 font-bold">
+                        {new Date(post.created_at).toLocaleDateString()}
+                      </span>
+                      {/* プライバシーアイコンを Lucide アイコンに変更 */}
+                      <span className="opacity-80" style={{ color: GOLD_COLOR }}>
+                        {post.privacy_level === 'public' ? (
+                          <Globe size={13} strokeWidth={2.5} />
+                        ) : (
+                          <Lock size={13} strokeWidth={2.5} />
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
                 {post.user_id === user?.id && (
                   <button onClick={() => handleDelete(post.id)} className="p-2 text-gray-300 hover:text-rose-400 transition-colors">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>
+                    {/* ゴミ箱も Lucide の Trash2 に変更すると統一感が出ます */}
+                    <Trash2 size={18} strokeWidth={2} />
                   </button>
                 )}
               </div>
@@ -124,9 +129,15 @@ export default function FilteredTimeline({
 
               <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
                 <ReactionButtons postId={post.id} awesomeCount={post.awesomeCount} hugCount={post.hugCount} initialMyReaction={post.myReaction} />
-                <button onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all ${isCommentOpen ? 'bg-gray-100 text-gray-800' : 'text-gray-400'}`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" fill={isCommentOpen ? "currentColor" : "none"} viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785 0 00.19.23c.242.214.582.3.882.232a4.797 4.797 0 001.353-.434c.54-.23.97-.4 1.36-.5a10.06 10.06 0 002.28.216z" /></svg>
-                  <span className="text-xs font-bold">{postReplies.length}</span>
+                
+                <button 
+                  onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} 
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all ${isCommentOpen ? 'bg-amber-50' : 'text-gray-400'}`}
+                  style={isCommentOpen ? { color: GOLD_COLOR } : {}}
+                >
+                  {/* コメントアイコンを Lucide の MessageCircle に変更 */}
+                  <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? "currentColor" : "none"} />
+                  <span className="text-xs font-black">{postReplies.length}</span>
                 </button>
               </div>
 
@@ -137,13 +148,12 @@ export default function FilteredTimeline({
                       <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
                         <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50" alt="" />
                         <div className="flex-1 bg-gray-50/80 p-3 rounded-2xl relative text-gray-800">
-                          <span className="text-[11px] font-bold block mb-1">{reply.authorProfile?.full_name}</span>
+                          <span className="text-[11px] font-bold block mb-1" style={{ color: GOLD_COLOR }}>{reply.authorProfile?.full_name}</span>
                           <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
                         </div>
                       </div>
                     ))}
                   </div>
-                  
                   <ReplyForm 
                     parentId={post.id} 
                     onSuccess={() => {

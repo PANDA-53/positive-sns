@@ -246,7 +246,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 }
 
 /**
- * 4. 投稿・リプライ作成
+ * 4. 投稿・リプライ作成 (修正版)
  */
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
@@ -254,8 +254,8 @@ export async function createPost(formData: FormData) {
   const parentId = formData.get('parent_id') ? parseInt(formData.get('parent_id') as string) : null;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
   
-  const imageFile = formData.get('image') instanceof File ? (formData.get('image') as File) : null;
-  const videoFile = formData.get('video') instanceof File ? (formData.get('video') as File) : null;
+  // ★ 修正ポイント: フロントの name="media" に合わせて取得
+  const file = formData.get('media') instanceof File ? (formData.get('media') as File) : null;
   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect('/login');
@@ -266,21 +266,25 @@ export async function createPost(formData: FormData) {
   let imageUrl = null;
   let videoUrl = null;
 
-  if (imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
-    const fileName = `${user.id}/${Date.now()}.${imageFile.name.split('.').pop()}`;
-    const { data: uploadData, error: uploadError } = await supabase.storage.from('post_images').upload(fileName, imageFile);
-    if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
-      imageUrl = publicUrl;
-    }
-  }
+  // ★ 修正ポイント: ファイルが存在する場合の処理を統合
+  if (file && file.size > 0 && file.name !== 'undefined') {
+    const isVideo = file.type.startsWith('video/');
+    const bucketName = isVideo ? 'videos' : 'post_images';
+    const fileName = `${user.id}/${Date.now()}.${file.name.split('.').pop()}`;
 
-  if (videoFile && videoFile.size > 0 && videoFile.name !== 'undefined') {
-    const fileName = `${user.id}/${Date.now()}.${videoFile.name.split('.').pop()}`;
-    const { data: uploadData, error: uploadError } = await supabase.storage.from('videos').upload(fileName, videoFile);
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(bucketName)
+      .upload(fileName, file);
+
     if (!uploadError) {
-      const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(fileName);
-      videoUrl = publicUrl;
+      const { data: { publicUrl } } = supabase.storage.from(bucketName).getPublicUrl(fileName);
+      if (isVideo) {
+        videoUrl = publicUrl;
+      } else {
+        imageUrl = publicUrl;
+      }
+    } else {
+      console.error("ストレージアップロード失敗:", uploadError);
     }
   }
 
@@ -298,33 +302,28 @@ export async function createPost(formData: FormData) {
     return { isToxic: false, success: false, error: "DB保存失敗" };
   }
 
+  // 通知処理
   if (parentId) {
-  // 1. 親投稿（Gouの投稿）の作者IDを取得
-  const { data: parentPost, error: parentError } = await supabase
-    .from('posts')
-    .select('user_id')
-    .eq('id', parentId) // ★ 修正：'parseInt' となっていた部分を 'parentId' に
-    .single();
-
-  // 2. 宛先のチェックと送信
-  if (parentPost && parentPost.user_id !== user.id) {
-    
-    // 自分の名前（Ritsu）を取得
-    const { data: myProfile } = await supabase
-      .from('profiles')
-      .select('full_name')
-      .eq('id', user.id)
+    const { data: parentPost } = await supabase
+      .from('posts')
+      .select('user_id')
+      .eq('id', parentId)
       .single();
 
-    // 3. 送信！ (parentPost.user_id は Gou のID)
-    await sendNotificationToUser(
-      parentPost.user_id, // ★ ここが相手のID（Gou）になっていることが重要です
-      "新しい返信",
-      `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
-      `/` 
-    );
-  }
+    if (parentPost && parentPost.user_id !== user.id) {
+      const { data: myProfile } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('id', user.id)
+        .single();
 
+      await sendNotificationToUser(
+        parentPost.user_id,
+        "新しい返信",
+        `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
+        `/` 
+      );
+    }
   }
 
   revalidatePath('/', 'layout');
