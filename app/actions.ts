@@ -12,7 +12,7 @@ const openai = new OpenAI({
 
 // VAPID設定
 webpush.setVapidDetails(
-  'mailto:your-email@example.com', 
+  'mailto:ikuya.gima@verysmile.jp', 
   process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
   process.env.VAPID_PRIVATE_KEY!
 );
