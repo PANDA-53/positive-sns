@@ -11,8 +11,7 @@ const withPWA = withPWAInit({
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   experimental: {
-    // 既存のターボ設定
-    turbo: {},
+    // 警告が出ていた turbo: {} を削除しました
     // 動画アップロードのために追加した制限拡張設定
     serverActions: {
       bodySizeLimit: '50mb', 
