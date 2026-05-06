@@ -57,7 +57,7 @@ async function checkAndSuggestContent(content: string) {
 あなたの使命は、投稿から「毒」を抜き、ユーザーの「本音」を誰も傷つかない「輝き」に変えることです。
 
 【判定基準：POSITIVES・ルール】
-・TOXIC（即書き換え対象）：
+・TOXIC（即書き書き換え対象）：
   - 攻撃の矛先が「外（他者・社会・特定の誰か）」に向いているもの。
   - 否定的な断定（「〜はダメだ」「〜すべきでない」）。
   - 文脈に潜む「皮肉」や「冷笑」。
@@ -138,56 +138,66 @@ export async function logout() {
  * 2. メインタイムライン用データ取得
  */
 export async function fetchMainTimelineData(userId: string) {
-  const supabase = await createClient();
-  
-  const [postsRes, friendshipsRes] = await Promise.all([
-    supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
-    supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
-  ]);
+  try {
+    const supabase = await createClient();
+    
+    const [postsRes, friendshipsRes] = await Promise.all([
+      supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
+      supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
+    ]);
 
-  const posts = postsRes.data || [];
-  const friendshipsRaw = friendshipsRes.data || [];
+    // エラー時は確実に空の構造を返す
+    if (postsRes.error || friendshipsRes.error) {
+      return { mainPosts: [], replies: [], friendIds: [], pendingRequests: [], acceptedFriends: [] };
+    }
 
-  const postUserIds = posts.map(p => p.user_id);
-  const friendUserIds = friendshipsRaw.map(f => (f.user_id === userId ? f.friend_id : f.user_id));
-  const allRelevantIds = Array.from(new Set([...postUserIds, ...friendUserIds, userId])).filter(Boolean);
+    const posts = postsRes.data || [];
+    const friendshipsRaw = friendshipsRes.data || [];
 
-  const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allRelevantIds);
+    const postUserIds = posts.map(p => p.user_id);
+    const friendUserIds = friendshipsRaw.map(f => (f.user_id === userId ? f.friend_id : f.user_id));
+    const allRelevantIds = Array.from(new Set([...postUserIds, ...friendUserIds, userId])).filter(Boolean);
 
-  const friendMap = new Map();
-  friendshipsRaw
-    .filter(f => f.status === 'accepted')
-    .forEach(f => {
-      const fid = f.user_id === userId ? f.friend_id : f.user_id;
-      const profile = allProfiles?.find(p => p.id === fid);
-      if (profile) friendMap.set(fid, profile);
-    });
-  
-  const acceptedFriends = Array.from(friendMap.values());
+    const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allRelevantIds);
 
-  const pendingRequests = friendshipsRaw
-    .filter(f => f.friend_id === userId && f.status === 'pending')
-    .map(f => ({
-      user_id: f.user_id,
-      sender_profile: allProfiles?.find(p => p.id === f.user_id)
-    }))
-    .filter(req => req.sender_profile);
+    const friendMap = new Map();
+    friendshipsRaw
+      .filter(f => f.status === 'accepted')
+      .forEach(f => {
+        const fid = f.user_id === userId ? f.friend_id : f.user_id;
+        const profile = allProfiles?.find(p => p.id === fid);
+        if (profile) friendMap.set(fid, profile);
+      });
+    
+    const acceptedFriends = Array.from(friendMap.values());
 
-  const formattedPosts = posts.map(post => ({
-    ...post,
-    authorProfile: allProfiles?.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '' },
-    awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
-    hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
-    myReaction: post.reactions?.find((r: any) => r.user_id === userId)?.type || null,
-  }));
+    const pendingRequests = friendshipsRaw
+      .filter(f => f.friend_id === userId && f.status === 'pending')
+      .map(f => ({
+        user_id: f.user_id,
+        sender_profile: allProfiles?.find(p => p.id === f.user_id)
+      }))
+      .filter(req => req.sender_profile);
 
-  return {
-    mainPosts: formattedPosts.filter(p => !p.parent_id),
-    replies: formattedPosts.filter(p => p.parent_id),
-    friendIds: Array.from(friendMap.keys()) as string[], 
-    pendingRequests,
-    acceptedFriends
-  };
+    const formattedPosts = posts.map(post => ({
+      ...post,
+      authorProfile: allProfiles?.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '' },
+      awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
+      hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
+      myReaction: post.reactions?.find((r: any) => r.user_id === userId)?.type || null,
+    }));
+
+    return {
+      mainPosts: formattedPosts.filter(p => !p.parent_id),
+      replies: formattedPosts.filter(p => p.parent_id),
+      friendIds: Array.from(friendMap.keys()) as string[], 
+      pendingRequests,
+      acceptedFriends
+    };
+  } catch (error) {
+    console.error("fetchMainTimelineData Error:", error);
+    return { mainPosts: [], replies: [], friendIds: [], pendingRequests: [], acceptedFriends: [] };
+  }
 }
 
 /**
@@ -227,7 +237,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 }
 
 /**
- * 4. 投稿・返信作成
+ * 4. 投稿・リプライ作成
  */
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
@@ -235,23 +245,20 @@ export async function createPost(formData: FormData) {
   const parentId = formData.get('parent_id') ? parseInt(formData.get('parent_id') as string) : null;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
   
-  const imageFile = formData.get('image') as File | null;
-  const videoFile = formData.get('video') as File | null;
+  const imageFile = formData.get('image') instanceof File ? (formData.get('image') as File) : null;
+  const videoFile = formData.get('video') instanceof File ? (formData.get('video') as File) : null;
   
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect('/login');
 
   const result = await checkAndSuggestContent(content);
-  if (result.isToxic) return { ...result, errorType: 'toxic-content' };
+  if (result.isToxic) return { ...result, errorType: 'toxic-content', success: false };
 
   let imageUrl = null;
   let videoUrl = null;
 
-  // 画像アップロード処理
-  if (imageFile && imageFile.size > 0) {
-    const rawName = imageFile.name || "";
-    const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'jpg';
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+  if (imageFile && imageFile.size > 0 && imageFile.name !== 'undefined') {
+    const fileName = `${user.id}/${Date.now()}.${imageFile.name.split('.').pop()}`;
     const { data: uploadData, error: uploadError } = await supabase.storage.from('post_images').upload(fileName, imageFile);
     if (!uploadError) {
       const { data: { publicUrl } } = supabase.storage.from('post_images').getPublicUrl(fileName);
@@ -259,11 +266,8 @@ export async function createPost(formData: FormData) {
     }
   }
 
-  // ビデオアップロード処理
-  if (videoFile && videoFile.size > 0) {
-    const rawName = videoFile.name || "";
-    const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'mp4';
-    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+  if (videoFile && videoFile.size > 0 && videoFile.name !== 'undefined') {
+    const fileName = `${user.id}/${Date.now()}.${videoFile.name.split('.').pop()}`;
     const { data: uploadData, error: uploadError } = await supabase.storage.from('videos').upload(fileName, videoFile);
     if (!uploadError) {
       const { data: { publicUrl } } = supabase.storage.from('videos').getPublicUrl(fileName);
@@ -271,23 +275,22 @@ export async function createPost(formData: FormData) {
     }
   }
 
-  // DB保存
-  const { data: insertedPost, error: insertError } = await supabase.from('posts').insert({ 
+  const { error: insertError } = await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
     privacy_level: privacyLevel,
     image_url: imageUrl,
     video_url: videoUrl,
     parent_id: parentId 
-  }).select().single();
+  });
 
-  if (insertError) return { isToxic: false, error: "DB保存失敗" };
+  if (insertError) {
+    console.error("DB保存失敗:", insertError);
+    return { isToxic: false, success: false, error: "DB保存失敗" };
+  }
 
-  // ★ 追加：返信（parentIdがある）の場合の通知処理
   if (parentId) {
     const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parentId).single();
-    
-    // 自分以外への返信なら通知を飛ばす（テスト時は !== user.id を外すと自分にも届きます）
     if (parentPost && parentPost.user_id !== user.id) {
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
       await sendNotificationToUser(
@@ -299,43 +302,49 @@ export async function createPost(formData: FormData) {
     }
   }
 
-  revalidatePath('/', 'layout'); 
-  revalidatePath(`/users/${user.id}`, 'layout');
-  
+  revalidatePath('/', 'layout');
+  revalidatePath('/', 'page');
   return { isToxic: false, success: true };
 }
 
 export async function createReply(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
-  const parentId = formData.get('parentId') as string;
+  const parentId = formData.get('parentId') as string; 
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { isToxic: false };
+  
+  // 常に isToxic を含める
+  if (!user) return { success: false, isToxic: false };
 
   const result = await checkAndSuggestContent(content);
-  if (result.isToxic) return result;
+  if (result.isToxic) return { ...result, success: false };
 
-  await supabase.from('posts').insert({ 
+  const { error: insertError } = await supabase.from('posts').insert({ 
     content, 
     parent_id: parseInt(parentId), 
     user_id: user.id,
     privacy_level: 'public'
   });
 
-  // 通知処理
+  if (insertError) return { success: false, isToxic: false };
+
+  // 通知処理（省略せずに実行されます）...
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
   if (parentPost && parentPost.user_id !== user.id) {
     const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
     await sendNotificationToUser(
       parentPost.user_id,
-      "新しい返信",
+      "返信",
       `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
-      `/` 
+      `/`
     );
   }
 
-  revalidatePath('/');
-  return { isToxic: false, success: true };
+  // ここでキャッシュをクリア
+  revalidatePath('/', 'layout');
+  revalidatePath('/', 'page');
+  
+  return { success: true, isToxic: false };
 }
 
 /**
@@ -353,7 +362,6 @@ export async function deleteFriendship(targetUserId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
-  // currentUserId を user.id に修正
   await supabase.from('friendships').delete().or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
   revalidatePath(`/users/${targetUserId}`);
 }
@@ -401,8 +409,6 @@ export async function updatePushSubscription(subscriptionJson: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   await supabase.from('profiles').update({ push_subscription: JSON.parse(subscriptionJson) }).eq('id', user.id);
-  
-  // ★追加：保存後にキャッシュを再検証してリセットを防ぐ
   revalidatePath('/', 'layout');
 }
 
@@ -439,7 +445,6 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
   } else { 
     await supabase.from('reactions').insert({ post_id: postId, user_id: user.id, type: reactionType }); 
 
-    // リアクション通知
     const { data: post } = await supabase.from('posts').select('user_id').eq('id', postId).single();
     if (post && post.user_id !== user.id) {
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();

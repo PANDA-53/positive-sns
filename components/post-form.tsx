@@ -77,19 +77,21 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
         return;
       }
 
-      // --- ここから更新処理を最適化 ---
+      // --- 更新処理を確実に実行させる修正 ---
       if (result.success) {
-  // ① 入力欄を消す
+  // ① まず入力をリセット
   handleReset();
+  // ② 画面更新を startTransition で囲んで確実に実行
+  startTransition(() => {
+    router.refresh(); 
+    // ここで親の関数を呼ぶ。もし FilteredTimeline 側の関数が動いていないなら
+    // ここで直接 router.refresh() が動くことで解決するはず
+    if (onSuccess) {
+      onSuccess();
+    }
+  });
 
-  // ② 【重要】Next.jsに「今の画面を最新データで上書きしろ」と命令する
-  // router.refresh() はページ全体をリロードせず、データだけを入れ替えます
-  router.refresh();
-
-  // ③ もし親から渡された更新関数（React Query等）があれば実行
-  if (onSuccess) onSuccess();
-
-  toast.success("投稿しました！");
+  toast.success(isReply ? "返信しました！" : "投稿しました！");
 }
 
     } catch (error) {

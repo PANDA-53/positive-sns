@@ -1,9 +1,9 @@
-"use client"; // キャッシュ機能（React Query）を使うためクライアント化
+"use client";
 
 import { createClient } from '@/utils/supabase/client'
 import { logout, acceptFriendRequest, fetchMainTimelineData } from './actions'
 import { useEffect, useState } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query' // ★ useQueryClient を追加
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import PostForm from '../components/post-form'
 import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
@@ -12,31 +12,44 @@ import { useRouter } from 'next/navigation'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
-// --- フィード表示用コンポーネント ---
 function MainTimelineContent({ user }: { user: any }) {
-  const queryClient = useQueryClient(); // ★ React Queryのキャッシュを操作するクライアントを取得
+  const queryClient = useQueryClient();
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['main-timeline', user.id],
     queryFn: () => fetchMainTimelineData(user.id),
     staleTime: 1000 * 60 * 5,
     enabled: !!user?.id,
+    placeholderData: (previousData) => previousData, 
   })
 
-  // ★ 投稿成功時に呼ばれる関数。キャッシュを破棄して再取得を促す
+  /**
+   * ★ 更新の核心ロジック
+   * 投稿やリプライ、フレンド承認など、データが変わる操作の後に実行します。
+   */
   const handlePostSuccess = async () => {
-    await queryClient.invalidateQueries({ queryKey: ['main-timeline', user.id] });
+    // サーバーの反映ラグを考慮して少し待つ
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // キャッシュを古いものとしてマーク
+    await queryClient.invalidateQueries({ 
+      queryKey: ['main-timeline', user.id] 
+    });
+    
+    // ★ データを強制的に再取得して再描画
+    await refetch();
   };
 
-  if (isLoading) {
+  // 初回ロード時のみスケルトンを表示
+  if (isLoading || !data) {
     return (
       <div className="text-center py-20 animate-pulse">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Refreshing Feed...</p>
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Updating Feed...</p>
       </div>
     )
   }
 
-  if (isError || !data) {
+  if (isError) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 text-red-600 rounded-2xl text-[10px] font-bold text-center">
         データの取得に失敗しました
@@ -44,10 +57,18 @@ function MainTimelineContent({ user }: { user: any }) {
     )
   }
 
-  const { mainPosts, replies, friendIds, pendingRequests, acceptedFriends } = data
+  // データの存在保証
+  const mainPosts = Array.isArray(data?.mainPosts) ? data.mainPosts : null;
+  const replies = Array.isArray(data?.replies) ? data.replies : [];
+  const friendIds = Array.isArray(data?.friendIds) ? data.friendIds : [];
+  const acceptedFriends = Array.isArray(data?.acceptedFriends) ? data.acceptedFriends : [];
+  const pendingRequests = Array.isArray(data?.pendingRequests) ? data.pendingRequests : [];
+
+  if (!mainPosts) return null;
 
   return (
     <div className="space-y-4 pb-20">
+      {/* フレンドリスト */}
       <section className="bg-white p-4 rounded-[1.5rem] shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex gap-4 overflow-x-auto pb-1 scrollbar-hide">
           {acceptedFriends.length > 0 ? (
@@ -63,9 +84,10 @@ function MainTimelineContent({ user }: { user: any }) {
         </div>
       </section>
 
+      {/* フレンド申請 */}
       {pendingRequests.length > 0 && (
         <section className="bg-blue-50/50 p-4 rounded-[1.5rem] border border-blue-100 space-y-2">
-          <h3 className="text-[9px] font-black text-blue-400 uppercase tracking-widest px-1">Friend Requests</h3>
+          <h3 className="text-[9px] font-black text-blue-500 uppercase tracking-widest px-1">Friend Requests</h3>
           {pendingRequests.map((req: any) => (
             <div key={req.user_id} className="flex items-center justify-between bg-white p-3 rounded-2xl shadow-sm border border-blue-50">
               <div className="flex items-center gap-2">
@@ -81,20 +103,21 @@ function MainTimelineContent({ user }: { user: any }) {
         </section>
       )}
 
-      {/* ★ PostForm に handlePostSuccess を渡す */}
+      {/* 通常の投稿フォーム */}
       <PostForm onSuccess={handlePostSuccess} />
 
+      {/* タイムライン（リプライ機能を含む） */}
       <FilteredTimeline 
         mainPosts={mainPosts} 
         replies={replies} 
         user={user} 
         friendIds={friendIds} 
+        onSuccess={handlePostSuccess} // ← ここでリプライ成功時も handlePostSuccess が呼ばれるように
       />
     </div>
   )
 }
 
-// --- メイン Index コンポーネント ---
 export default function Index() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
@@ -104,10 +127,10 @@ export default function Index() {
 
   useEffect(() => {
     const getAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        setUser(user)
-        const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      const { data: { user: authUser } } = await supabase.auth.getUser()
+      if (authUser) {
+        setUser(authUser)
+        const { data: prof } = await supabase.from('profiles').select('*').eq('id', authUser.id).single()
         setProfile(prof)
       } else {
         router.push('/login')
@@ -115,7 +138,7 @@ export default function Index() {
       setIsInitialLoading(false)
     }
     getAuth()
-  }, [router])
+  }, [router, supabase])
 
   if (isInitialLoading) {
     return (
@@ -134,27 +157,20 @@ export default function Index() {
       <nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b h-14 flex items-center px-4">
         <div className="max-w-2xl mx-auto w-full flex justify-between items-center">
           <h1 className="text-lg font-black text-green-700 tracking-tighter">POSITIVES</h1>
-          {user && (
-            <div className="flex items-center gap-3">
-              <Link href="/search" className="p-2 text-gray-400 hover:text-green-600 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-                </svg>
-              </Link>
-
-              <Link href={`/users/${user.id}`} className="hover:opacity-80 transition-opacity">
-                <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" alt="Profile" />
-              </Link>
-              <Link href="/profile" className="text-[10px] font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-200 transition-colors">
-                設定
-              </Link>
-              <form action={logout}>
-                <button className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors px-1">
-                  ログアウト
-                </button>
-              </form>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <Link href="/search" className="p-2 text-gray-400 hover:text-green-600 transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+              </svg>
+            </Link>
+            <Link href={`/users/${user.id}`} className="hover:opacity-80 transition-opacity">
+              <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" alt="Profile" />
+            </Link>
+            <Link href="/profile" className="text-[10px] font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-200 transition-colors">設定</Link>
+            <form action={logout}>
+              <button className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors px-1">ログアウト</button>
+            </form>
+          </div>
         </div>
       </nav>
 
