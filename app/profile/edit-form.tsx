@@ -1,19 +1,78 @@
 "use client"
 
 import { useState } from 'react'
-import { updateProfile } from '../actions'
+import { updateProfile, updatePushSubscription } from '../actions' // ★updatePushSubscriptionを追加
 import Link from 'next/link'
 import imageCompression from 'browser-image-compression'
 import { toast } from 'sonner'
 import { useRouter } from 'next/navigation'
 
+// --- 通知設定用サブコンポーネント ---
+function NotificationSetter({ userId, initialSubscription }: { userId: string, initialSubscription: any }) {
+  const [isSubscribing, setIsSubscribing] = useState(false);
+  const [hasSubscription, setHasSubscription] = useState(!!initialSubscription);
+  
+  // ★ ここに generate-vapid-keys で取得した公開鍵を貼る
+  const VAPID_PUBLIC_KEY = "BJEoIlcIMB4uXEChjfcDjdzdu2wNrVgklCvK2Qyjbulq0FBoM9IFcOPaI3gsv_ZEdAgnngCVICjIqO5baG0ZIvs";
+
+  const handleSubscribe = async () => {
+    if (!('serviceWorker' in navigator)) {
+      toast.error("このブラウザは通知に対応していません");
+      return;
+    }
+
+    setIsSubscribing(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: VAPID_PUBLIC_KEY
+      });
+
+      await updatePushSubscription(JSON.stringify(subscription));
+      setHasSubscription(true);
+      toast.success("通知が有効になりました！");
+    } catch (error) {
+      console.error(error);
+      toast.error("設定失敗。ホーム画面に追加して起動してください。");
+    } finally {
+      setIsSubscribing(false);
+    }
+  };
+
+  return (
+    <div className="bg-gray-50 p-5 rounded-[1.5rem] border border-gray-100 space-y-3 mt-4">
+      <div className="flex items-center justify-between px-1">
+        <div>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Push Notification</p>
+          <p className="text-[11px] text-gray-500 font-bold">リアクションや返信をリアルタイムで通知</p>
+        </div>
+        <div className={`w-2 h-2 rounded-full ${hasSubscription ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+      </div>
+
+      <button
+        type="button"
+        onClick={handleSubscribe}
+        disabled={isSubscribing || hasSubscription}
+        className={`w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${
+          hasSubscription 
+          ? "bg-white text-gray-400 border border-gray-200 cursor-default" 
+          : "bg-green-600 text-white shadow-md hover:bg-green-700"
+        }`}
+      >
+        {isSubscribing ? "Setting up..." : hasSubscription ? "Notifications Active" : "Enable Push Notifications"}
+      </button>
+    </div>
+  );
+}
+
+// --- メインコンポーネント ---
 export default function ProfileEditForm({ initialProfile }: { initialProfile: any }) {
   const [previewUrl, setPreviewUrl] = useState(initialProfile?.avatar_url)
   const [isCompressing, setIsCompressing] = useState(false)
   const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
   const router = useRouter()
 
-  // 遷移先のパス
   const userPagePath = `/users/${initialProfile?.id}`
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -35,7 +94,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
     const formData = new FormData(e.currentTarget)
     
     try {
-      // 画像圧縮
       const imageFile = formData.get('avatar') as File
       if (imageFile && imageFile.size > 1024 * 1024) {
         const options = { maxSizeMB: 0.9, maxWidthOrHeight: 1200, useWebWorker: true }
@@ -43,21 +101,15 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
         formData.set('avatar', compressedFile, compressedFile.name)
       }
 
-      // サーバーアクション実行（awaitする）
       await updateProfile(formData)
-
-      // 成功時（サーバー側でリダイレクトがない場合）
       toast.success('プロフィールを更新しました')
       router.refresh()
       router.push(userPagePath)
 
     } catch (error: any) {
-      // サーバー側で redirect("/") が走ると、ここ（catch）に NEXT_REDIRECT エラーが来ます
-      // その場合でも、無視してユーザーページへ強制移動させます
       router.refresh()
       window.location.href = userPagePath 
     } finally {
-      // 念のための保険
       setTimeout(() => setIsCompressing(false), 1000)
     }
   }
@@ -109,6 +161,12 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
                   className="w-full p-4 bg-gray-50 rounded-2xl outline-none text-black border-none focus:ring-2 focus:ring-black/5 transition-all min-h-[120px] resize-none text-sm leading-relaxed"
                 />
               </div>
+
+              {/* ★ 追加：通知設定セクションをBioの下に配置 */}
+              <NotificationSetter 
+                userId={initialProfile?.id} 
+                initialSubscription={initialProfile?.push_subscription} 
+              />
             </div>
 
             <div className="space-y-3 pt-4">

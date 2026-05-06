@@ -4,10 +4,44 @@ import { createClient } from '../utils/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import OpenAI from 'openai';
+import webpush from 'web-push';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// VAPID設定
+webpush.setVapidDetails(
+  'mailto:your-email@example.com', 
+  process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+  process.env.VAPID_PRIVATE_KEY!
+);
+
+/**
+ * 指定したユーザーに通知を飛ばす関数
+ */
+async function sendNotificationToUser(userId: string, title: string, body: string, url: string) {
+  const supabase = await createClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('push_subscription')
+    .eq('id', userId)
+    .single();
+
+  if (profile?.push_subscription) {
+    try {
+      await webpush.sendNotification(
+        profile.push_subscription as any,
+        JSON.stringify({ title, body, url })
+      );
+    } catch (error: any) {
+      console.error('Push通知送信失敗:', error);
+      if (error.statusCode === 410) {
+        await supabase.from('profiles').update({ push_subscription: null }).eq('id', userId);
+      }
+    }
+  }
+}
 
 /**
  * SNS「POSITIVES」モデレーター判定ロジック
@@ -213,7 +247,6 @@ export async function createPost(formData: FormData) {
   let imageUrl = null;
   let videoUrl = null;
 
-  // --- ストレージ保存処理 (省略なし) ---
   if (imageFile && imageFile.size > 0) {
     const rawName = imageFile.name || "";
     const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'jpg';
@@ -247,8 +280,6 @@ export async function createPost(formData: FormData) {
 
   if (insertError) return { isToxic: false, error: "DB保存失敗" };
 
-  // ★ 修正ポイント：キャッシュの再検証を確実に実行
-  // 'page' だけでなく 'layout' も含めて再検証することで、タイムラインの更新漏れを防ぎます
   revalidatePath('/', 'layout'); 
   revalidatePath(`/users/${user.id}`, 'layout');
   
@@ -272,6 +303,18 @@ export async function createReply(formData: FormData) {
     privacy_level: 'public'
   });
 
+  // 通知処理
+  const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
+  if (parentPost && parentPost.user_id !== user.id) {
+    const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+    await sendNotificationToUser(
+      parentPost.user_id,
+      "新しい返信",
+      `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
+      `/` 
+    );
+  }
+
   revalidatePath('/');
   return { isToxic: false, success: true };
 }
@@ -291,6 +334,7 @@ export async function deleteFriendship(targetUserId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
+  // currentUserId を user.id に修正
   await supabase.from('friendships').delete().or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
   revalidatePath(`/users/${targetUserId}`);
 }
@@ -333,6 +377,14 @@ export async function updateProfile(formData: FormData) {
   return redirect(`/users/${user.id}`);
 }
 
+export async function updatePushSubscription(subscriptionJson: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase.from('profiles').update({ push_subscription: JSON.parse(subscriptionJson) }).eq('id', user.id);
+  revalidatePath('/profile');
+}
+
 export async function reportPost(postId: number) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -341,11 +393,10 @@ export async function reportPost(postId: number) {
   const { error } = await supabase.from('reports').insert({ 
     post_id: postId, 
     reporter_id: user.id,
-    reason: '少し悲しくなった' // デフォルト理由
+    reason: '少し悲しくなった' 
   });
 
   if (!error) {
-    // 管理画面を最新にする
     revalidatePath('/admin/dashboard');
     return { success: true };
   }
@@ -359,9 +410,27 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
+
   const { data: existing } = await supabase.from('reactions').select('id').eq('post_id', postId).eq('user_id', user.id).eq('type', reactionType).single();
-  if (existing) { await supabase.from('reactions').delete().eq('id', existing.id); }
-  else { await supabase.from('reactions').insert({ post_id: postId, user_id: user.id, type: reactionType }); }
+  
+  if (existing) { 
+    await supabase.from('reactions').delete().eq('id', existing.id); 
+  } else { 
+    await supabase.from('reactions').insert({ post_id: postId, user_id: user.id, type: reactionType }); 
+
+    // リアクション通知
+    const { data: post } = await supabase.from('posts').select('user_id').eq('id', postId).single();
+    if (post && post.user_id !== user.id) {
+      const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+      const icon = reactionType === 'awesome' ? '✨' : '🫂';
+      await sendNotificationToUser(
+        post.user_id,
+        `${icon} リアクション`,
+        `${myProfile?.full_name || '誰か'}さんがリアクションしました`,
+        `/`
+      );
+    }
+  }
   revalidatePath('/');
 }
 
@@ -371,13 +440,12 @@ export async function deletePost(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   await supabase.from('posts').delete().eq('id', postId);
   revalidatePath('/');
-  revalidatePath('/admin/dashboard'); // 管理画面からも消えるように
+  revalidatePath('/admin/dashboard'); 
   if (user) revalidatePath(`/users/${user.id}`);
 }
 
 export async function getReportedPosts() {
   const supabase: any = await createClient() 
-
   const { data, error } = await supabase
     .from('reports')
     .select(`
@@ -396,6 +464,5 @@ export async function getReportedPosts() {
     console.error('Fetch reports error:', error.message)
     return []
   }
-
   return data
 }
