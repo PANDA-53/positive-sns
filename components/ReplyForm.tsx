@@ -1,14 +1,29 @@
 "use client";
 
 import React, { useState, useTransition } from "react";
-import { createReply } from "@/app/actions";
+import { createPost } from "@/app/actions"; // createPostがリプライも兼ねている前提
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+
+interface PostResult {
+  isToxic?: boolean;
+  suggestions?: string[];
+  success?: boolean;
+}
 
 export default function ReplyForm({ parentId, onSuccess }: { parentId: number; onSuccess: () => void }) {
   const [content, setContent] = useState("");
   const [isPending, startTransition] = useTransition();
+  const [toxicInfo, setToxicInfo] = useState<{ isToxic: boolean; suggestions: string[] }>({
+    isToxic: false,
+    suggestions: [],
+  });
   const router = useRouter();
+
+  const handleSuggestionClick = (suggestedText: string) => {
+    setContent(suggestedText);
+    setToxicInfo({ isToxic: false, suggestions: [] });
+  };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -16,49 +31,81 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
 
     const formData = new FormData();
     formData.append("content", content);
-    formData.append("parentId", parentId.toString());
+    formData.append("parent_id", parentId.toString()); // PostFormに合わせてparent_id
 
     startTransition(async () => {
-      // 1. サーバーアクションの実行を待つ
-      const result = await createReply(formData);
+      try {
+        const result = (await createPost(formData)) as PostResult;
 
-      if (result.success) {
-        setContent("");
-        // 2. クライアント側のルーター状態を更新
-        router.refresh(); 
-        
-        // 3. 親コンポーネントの handlePostSuccess を実行
-        if (onSuccess) {
-          await onSuccess(); 
+        if (result && result.isToxic) {
+          setToxicInfo({ isToxic: true, suggestions: result.suggestions || [] });
+          toast.warning("その言葉を伝えたら、貴方は笑顔になれますか");
+          return;
         }
-        
-        toast.success("返信しました");
-      } else if (result.isToxic) {
-        toast.error("内容を調整してみましょう");
+
+        if (result.success) {
+          setContent("");
+          setToxicInfo({ isToxic: false, suggestions: [] });
+          router.refresh(); 
+          if (onSuccess) {
+            onSuccess(); 
+          }
+          toast.success("返信しました");
+        }
+      } catch (error) {
+        toast.error("エラーが発生しました");
       }
     });
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mt-2">
-      <textarea
-        value={content}
-        onChange={(e) => setContent(e.target.value)}
-        className="w-full p-3 bg-gray-50 rounded-2xl text-[16px] outline-none border border-transparent focus:border-gray-200 transition-all text-black"
-        placeholder="優しい返信を送りましょう"
-        rows={2}
-        disabled={isPending}
-        required
-      />
-      <div className="flex justify-end mt-2">
-        <button
-          type="submit"
-          disabled={isPending || !content.trim()}
-          className="bg-black text-white px-5 py-2 rounded-full text-[11px] font-bold disabled:opacity-30 active:scale-95 transition-transform"
-        >
-          {isPending ? "送信中..." : "Reply"}
-        </button>
-      </div>
-    </form>
+    <div className="mt-2 space-y-2">
+      {/* 言い換え案の表示：PostFormのデザインを継承 */}
+      {toxicInfo.isToxic && (
+        <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 p-3 rounded-2xl animate-in fade-in slide-in-from-top-1">
+          <p className="text-[10px] font-bold text-amber-800 mb-2 flex items-center gap-2">
+            <span className="w-1 h-1 bg-amber-500 rounded-full animate-pulse" />
+            もう少し柔らかい表現にしてみませんか？
+          </p>
+          <div className="flex flex-col gap-1.5">
+            {toxicInfo.suggestions.map((text, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handleSuggestionClick(text)}
+                className="text-left text-[11px] bg-white hover:bg-amber-50 border border-amber-100 p-2 rounded-xl transition-all text-gray-700 shadow-sm"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <form onSubmit={handleSubmit}>
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className={`w-full p-3 rounded-2xl text-[16px] outline-none border transition-all ${
+            toxicInfo.isToxic ? "bg-amber-50 border-amber-200" : "bg-gray-50 border-transparent focus:border-gray-200"
+          } text-black`}
+          placeholder="優しい返信を送りましょう"
+          rows={2}
+          disabled={isPending}
+          required
+        />
+        <div className="flex justify-end mt-2">
+          <button
+            type="submit"
+            disabled={isPending || !content.trim()}
+            className={`px-5 py-2 rounded-full text-[11px] font-bold transition-all active:scale-95 ${
+              toxicInfo.isToxic ? "bg-amber-500 text-white" : "bg-black text-white disabled:opacity-30"
+            }`}
+          >
+            {isPending ? "..." : toxicInfo.isToxic ? "Rewrite" : "Reply"}
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
