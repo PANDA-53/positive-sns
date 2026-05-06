@@ -247,6 +247,7 @@ export async function createPost(formData: FormData) {
   let imageUrl = null;
   let videoUrl = null;
 
+  // 画像アップロード処理
   if (imageFile && imageFile.size > 0) {
     const rawName = imageFile.name || "";
     const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'jpg';
@@ -258,6 +259,7 @@ export async function createPost(formData: FormData) {
     }
   }
 
+  // ビデオアップロード処理
   if (videoFile && videoFile.size > 0) {
     const rawName = videoFile.name || "";
     const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'mp4';
@@ -269,16 +271,33 @@ export async function createPost(formData: FormData) {
     }
   }
 
-  const { error: insertError } = await supabase.from('posts').insert({ 
+  // DB保存
+  const { data: insertedPost, error: insertError } = await supabase.from('posts').insert({ 
     content, 
     user_id: user.id, 
     privacy_level: privacyLevel,
     image_url: imageUrl,
     video_url: videoUrl,
     parent_id: parentId 
-  });
+  }).select().single();
 
   if (insertError) return { isToxic: false, error: "DB保存失敗" };
+
+  // ★ 追加：返信（parentIdがある）の場合の通知処理
+  if (parentId) {
+    const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parentId).single();
+    
+    // 自分以外への返信なら通知を飛ばす（テスト時は !== user.id を外すと自分にも届きます）
+    if (parentPost && parentPost.user_id !== user.id) {
+      const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+      await sendNotificationToUser(
+        parentPost.user_id,
+        "新しい返信",
+        `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
+        `/` 
+      );
+    }
+  }
 
   revalidatePath('/', 'layout'); 
   revalidatePath(`/users/${user.id}`, 'layout');
