@@ -84,13 +84,35 @@ export default function FilteredTimeline({
           return (
             <div key={`timeline-item-${post.id}`} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5 relative">
               <div className="flex items-center justify-between mb-4">
-                 <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
-                  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50" alt="" />
-                  <div className="flex flex-col">
-                    <span className="text-[13px] font-bold text-gray-800">{post.authorProfile?.full_name}</span>
-                    <span className="text-[9px] text-gray-400 font-bold">{new Date(post.created_at).toLocaleDateString()}</span>
-                  </div>
-                </Link>
+                 {/* 投稿者情報セクション */}
+<Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
+  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50" alt="" />
+  <div className="flex flex-col">
+    <span className="text-[13px] font-bold text-gray-800">{post.authorProfile?.full_name}</span>
+    
+    <div className="flex items-center gap-1.5 mt-0.5">
+      {/* 日付表示 */}
+      <span className="text-[9px] text-gray-400 font-bold">
+        {new Date(post.created_at).toLocaleDateString()}
+      </span>
+
+      {/* プライバシーアイコンの分岐 */}
+      {post.privacy_level === 'public' ? (
+        <span title="公開" className="text-green-500">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+            <path d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14Zm-1.002-1.05c-.322-.05-.623-.158-.894-.316a5.485 5.485 0 0 1-.873-.655 1.49 1.49 0 0 1-.231-.284V11.5a1.5 1.5 0 0 1 1.5-1.5h1a1.5 1.5 0 0 1 1.5 1.5v.19a5.508 5.508 0 0 1 2.274 1.554 5.503 5.503 0 0 1-4.274 2.206Zm-3.567-2.31c.143.19.324.363.535.513.14.1.296.183.46.25V11.5c0-.206.042-.403.118-.582a1.49 1.49 0 0 1-.22-.387l-.427-1.069A1.5 1.5 0 0 1 3.5 8.5v-1a1.5 1.5 0 0 1 .536-1.144A5.474 5.474 0 0 1 5.512 4.19v.31a1.5 1.5 0 0 0 1.5 1.5h1a1.5 1.5 0 0 0 1.5-1.5v-.868a5.5 5.5 0 0 1 3.824 5.083 1.5 1.5 0 0 0-1.336-.715h-.5a1.5 1.5 0 0 0-1.5 1.5v.19a3.003 3.003 0 0 0-1.726 2.76 5.5 5.5 0 0 1-5.84-2.748Z" />
+          </svg>
+        </span>
+      ) : (
+        <span title="フレンド限定" className="text-blue-500">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="w-3 h-3">
+            <path fillRule="evenodd" d="M8 1a3.5 3.5 0 0 0-3.5 3.5V7A1.5 1.5 0 0 0 3 8.5v5A1.5 1.5 0 0 0 4.5 15h7a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 11.5 7V4.5A3.5 3.5 0 0 0 8 1Zm2 6V4.5a2 2 0 1 0-4 0V7h4Z" clipRule="evenodd" />
+          </svg>
+        </span>
+      )}
+    </div>
+  </div>
+</Link>
                 {post.user_id === user?.id && (
                   <button onClick={() => handleDelete(post.id)} className="p-2 text-gray-300 hover:text-rose-400 transition-colors">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>

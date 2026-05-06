@@ -44,7 +44,7 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
       <textarea
         value={content}
         onChange={(e) => setContent(e.target.value)}
-        className="w-full p-3 bg-gray-50 rounded-2xl text-[13px] outline-none border border-transparent focus:border-gray-200 transition-all text-black"
+        className="w-full p-3 bg-gray-50 rounded-2xl text-[16px] outline-none border border-transparent focus:border-gray-200 transition-all text-black"
         placeholder="優しい返信を送りましょう"
         rows={2}
         disabled={isPending}

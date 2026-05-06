@@ -290,16 +290,32 @@ export async function createPost(formData: FormData) {
   }
 
   if (parentId) {
-    const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parentId).single();
-    if (parentPost && parentPost.user_id !== user.id) {
-      const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-      await sendNotificationToUser(
-        parentPost.user_id,
-        "新しい返信",
-        `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
-        `/` 
-      );
-    }
+  // 1. 親投稿（Gouの投稿）の作者IDを取得
+  const { data: parentPost, error: parentError } = await supabase
+    .from('posts')
+    .select('user_id')
+    .eq('id', parentId) // ★ 修正：'parseInt' となっていた部分を 'parentId' に
+    .single();
+
+  // 2. 宛先のチェックと送信
+  if (parentPost && parentPost.user_id !== user.id) {
+    
+    // 自分の名前（Ritsu）を取得
+    const { data: myProfile } = await supabase
+      .from('profiles')
+      .select('full_name')
+      .eq('id', user.id)
+      .single();
+
+    // 3. 送信！ (parentPost.user_id は Gou のID)
+    await sendNotificationToUser(
+      parentPost.user_id, // ★ ここが相手のID（Gou）になっていることが重要です
+      "新しい返信",
+      `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
+      `/` 
+    );
+  }
+
   }
 
   revalidatePath('/', 'layout');
@@ -340,10 +356,10 @@ export async function createReply(formData: FormData) {
     );
   }
 
-  // ここでキャッシュをクリア
+  // createReply の return 直前
   revalidatePath('/', 'layout');
   revalidatePath('/', 'page');
-  
+  revalidatePath('/[userId]', 'page'); // プロフィールページ用
   return { success: true, isToxic: false };
 }
 

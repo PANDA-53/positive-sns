@@ -14,6 +14,7 @@ const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
 function MainTimelineContent({ user }: { user: any }) {
   const queryClient = useQueryClient();
+  const router = useRouter();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['main-timeline', user.id],
@@ -28,16 +29,17 @@ function MainTimelineContent({ user }: { user: any }) {
    * 投稿やリプライ、フレンド承認など、データが変わる操作の後に実行します。
    */
   const handlePostSuccess = async () => {
-    // サーバーの反映ラグを考慮して少し待つ
-    await new Promise(resolve => setTimeout(resolve, 800));
+    // 1秒待つ（Supabaseの書き込み反映を確実に待つ）
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // キャッシュを古いものとしてマーク
-    await queryClient.invalidateQueries({ 
-      queryKey: ['main-timeline', user.id] 
-    });
+    // キャッシュを完全に削除
+    queryClient.removeQueries({ queryKey: ['main-timeline', user.id] });
     
-    // ★ データを強制的に再取得して再描画
+    // 強制再取得
     await refetch();
+    
+    // ルーターのリフレッシュ（サーバーコンポーネント側の再検証）
+    router.refresh();
   };
 
   // 初回ロード時のみスケルトンを表示
