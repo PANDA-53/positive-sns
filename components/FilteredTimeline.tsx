@@ -4,8 +4,9 @@ import React, { useState } from 'react'
 import Link from 'next/link'
 import { ReactionButtons } from './reaction-buttons'
 import PostForm from './post-form'
+import { ReportButton } from './report-button' // 作成済みのリポートボタンをインポート
 import { toast } from 'sonner'
-import { reportPost, deletePost } from '@/app/actions'
+import { deletePost } from '@/app/actions'
 import { useQueryClient } from '@tanstack/react-query'
 
 export default function FilteredTimeline({ mainPosts, replies, user, friendIds }: any) {
@@ -26,21 +27,7 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
     return true;
   });
 
-  const handleReport = async (postId: number) => {
-    const confirmed = window.confirm('この投稿に「チクチク（攻撃性）」を感じましたか？運営に報告します。');
-    if (confirmed) {
-      try {
-        const result = await reportPost(postId);
-        if (result.success) {
-          toast.success('報告ありがとうございます。運営が内容を確認します。');
-        } else {
-          toast.error('報告の送信に失敗しました。');
-        }
-      } catch (error) {
-        toast.error('エラーが発生しました。');
-      }
-    }
-  };
+  // handleReport関数はReportButton内で完結するため削除しました
 
   const handleDelete = async (postId: number) => {
     if (!window.confirm('この投稿を削除してもよろしいですか？（この操作は取り消せません）')) return;
@@ -129,12 +116,10 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
                       <>
                         <div className="fixed inset-0 z-10" onClick={() => setOpenMenuId(null)} />
                         <div className="absolute right-0 mt-0 w-48 bg-white border border-gray-100 rounded-2xl shadow-xl py-2 z-20 animate-in fade-in zoom-in-95 duration-200">
-                          <button onClick={() => { handleReport(post.id); setOpenMenuId(null); }} className="w-full text-left px-4 py-3 text-[10px] font-black text-rose-500 active:bg-rose-50 flex items-center gap-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-rose-400">
-                              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                            チクチクした投稿…
-                          </button>
+                          {/* ★ 作成済みの ReportButton に差し替え */}
+                          <div className="w-full flex justify-start" onClick={() => setOpenMenuId(null)}>
+                            <ReportButton postId={post.id} />
+                          </div>
                         </div>
                       </>
                     )}
@@ -151,12 +136,12 @@ export default function FilteredTimeline({ mainPosts, replies, user, friendIds }
               </div>
             </div>
 
-            {/* コンテンツ部分：テキストのみLinkにする（ユーザーページ方式） */}
+            {/* コンテンツ部分 */}
             <Link href={`/posts/${post.id}`}>
               <p className="text-[15px] text-gray-800 mb-4 whitespace-pre-wrap leading-snug">{post.content}</p>
             </Link>
 
-            {/* メディア：Linkの外に出して、ユーザーページと同じ設定を適用 */}
+            {/* メディア */}
             {post.video_url ? (
               <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
                 <video 

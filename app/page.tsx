@@ -1,25 +1,32 @@
-'use client' // キャッシュ機能（React Query）を使うためクライアント化
+"use client"; // キャッシュ機能（React Query）を使うためクライアント化
 
 import { createClient } from '@/utils/supabase/client'
 import { logout, acceptFriendRequest, fetchMainTimelineData } from './actions'
 import { useEffect, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query' // ★ useQueryClient を追加
 import PostForm from '../components/post-form'
 import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
 import FilteredTimeline from '../components/FilteredTimeline'
-import { useRouter } from 'next/navigation' // ★追加
+import { useRouter } from 'next/navigation'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
 // --- フィード表示用コンポーネント ---
 function MainTimelineContent({ user }: { user: any }) {
+  const queryClient = useQueryClient(); // ★ React Queryのキャッシュを操作するクライアントを取得
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['main-timeline', user.id],
     queryFn: () => fetchMainTimelineData(user.id),
     staleTime: 1000 * 60 * 5,
     enabled: !!user?.id,
   })
+
+  // ★ 投稿成功時に呼ばれる関数。キャッシュを破棄して再取得を促す
+  const handlePostSuccess = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['main-timeline', user.id] });
+  };
 
   if (isLoading) {
     return (
@@ -74,7 +81,8 @@ function MainTimelineContent({ user }: { user: any }) {
         </section>
       )}
 
-      <PostForm />
+      {/* ★ PostForm に handlePostSuccess を渡す */}
+      <PostForm onSuccess={handlePostSuccess} />
 
       <FilteredTimeline 
         mainPosts={mainPosts} 
@@ -92,7 +100,7 @@ export default function Index() {
   const [profile, setProfile] = useState<any>(null)
   const [isInitialLoading, setIsInitialLoading] = useState(true)
   const supabase = createClient()
-  const router = useRouter() // ★追加
+  const router = useRouter()
 
   useEffect(() => {
     const getAuth = async () => {
@@ -102,7 +110,6 @@ export default function Index() {
         const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single()
         setProfile(prof)
       } else {
-        // ★ 未ログイン時は紹介ページを出さず、即座にログインページへ飛ばす
         router.push('/login')
       }
       setIsInitialLoading(false)
@@ -110,7 +117,6 @@ export default function Index() {
     getAuth()
   }, [router])
 
-  // ログインチェックが終わるまでは何も表示しない（チラつき防止）
   if (isInitialLoading) {
     return (
       <div className="min-h-screen bg-[#F2F2F2] flex items-center justify-center">
@@ -121,42 +127,37 @@ export default function Index() {
     )
   }
 
-  // ユーザーがいない場合は、リダイレクト中なので何も表示しない
   if (!user) return null
 
   return (
     <main className="min-h-screen bg-[#F2F2F2] font-sans text-black overflow-x-hidden">
-      {/* ナビゲーション */}
-      {/* ナビゲーション */}
-<nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b h-14 flex items-center px-4">
-  <div className="max-w-2xl mx-auto w-full flex justify-between items-center">
-    <h1 className="text-lg font-black text-green-700 tracking-tighter">POSITIVES</h1>
-    {user && (
-      <div className="flex items-center gap-3">
-        {/* ★ 復活させた検索アイコン */}
-        <Link href="/search" className="p-2 text-gray-400 hover:text-green-600 transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-            <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-          </svg>
-        </Link>
+      <nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b h-14 flex items-center px-4">
+        <div className="max-w-2xl mx-auto w-full flex justify-between items-center">
+          <h1 className="text-lg font-black text-green-700 tracking-tighter">POSITIVES</h1>
+          {user && (
+            <div className="flex items-center gap-3">
+              <Link href="/search" className="p-2 text-gray-400 hover:text-green-600 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+                </svg>
+              </Link>
 
-        <Link href={`/users/${user.id}`} className="hover:opacity-80 transition-opacity">
-          <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" alt="Profile" />
-        </Link>
-        <Link href="/profile" className="text-[10px] font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-200 transition-colors">
-          設定
-        </Link>
-        <form action={logout}>
-          <button className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors px-1">
-            ログアウト
-          </button>
-        </form>
-      </div>
-    )}
-  </div>
-</nav>
+              <Link href={`/users/${user.id}`} className="hover:opacity-80 transition-opacity">
+                <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" alt="Profile" />
+              </Link>
+              <Link href="/profile" className="text-[10px] font-bold text-gray-500 bg-gray-100 px-3 py-1.5 rounded-full hover:bg-gray-200 transition-colors">
+                設定
+              </Link>
+              <form action={logout}>
+                <button className="text-[10px] font-bold text-gray-400 hover:text-gray-600 transition-colors px-1">
+                  ログアウト
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      </nav>
 
-      {/* メインフィード */}
       <div className="max-w-2xl mx-auto px-4 mt-4">
         <PullToRefresh>
           <MainTimelineContent user={user} />

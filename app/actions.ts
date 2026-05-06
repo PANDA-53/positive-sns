@@ -11,7 +11,6 @@ const openai = new OpenAI({
 
 /**
  * SNS「POSITIVES」モデレーター判定ロジック
- * ※プロンプト内容は一切変更していません
  */
 async function checkAndSuggestContent(content: string) {
   try {
@@ -34,66 +33,16 @@ async function checkAndSuggestContent(content: string) {
   - 矛先が「内（自分）」に向いている弱音、悲しみ、後悔。
   - 喜び、感謝、些細な幸せの共有。
 
-【思考プロセス（思考の出力は不要）】
-1. ユーザーが本当に伝えたかった「感情の種」は何か？（怒り？ 悲しみ？ 疎外感？）
-2. その「種」を維持したまま、主語を「自分」に固定し、独白（モノローグ）の形式に変換できるか。
-3. 読み手が「この人も大変なんだな」と共感し、応援したくなる形に昇華させる。
-
 【出力ルール】
 1. SAFEの場合： "SAFE" とのみ出力。
 2. TOXICの場合： 以下の形式で出力。
-    NG | ユーザーを傷つけない「納得感のある理由」 | 言い換え案1 | 言い換え案2 | 言い換え案3
+    NG | 理由 | 案1 | 案2 | 案3
 
-【言い換え案作成の極意】
-・アドバイス（〜しましょう）ではなく、ユーザーの「心の声」として出力。
-・「怒り」を「戸惑い」や「自分への問いかけ」に変換する。
-・SNSの空気感に馴染む、柔らかい語尾（「〜だなぁ」「〜かもね」「〜ってこともあるかな」）。あなたはSNS「POSITIVES」のモデレーター兼、優秀なリライトエディターです。以下の厳格な基準に従って投稿を判定し、不適切な場合はユーザーを導いてください。
-
-【判定基準】
-
-TOXIC（投稿禁止）:
-
-他者への誹謗中傷、攻撃的発言、差別、偏見。
-
-他者の投稿を否定するコメント。
-
-「死ね」「うざい」等の隠語、または否定的感情を直接ぶつける言葉。
-
-「嫌い」「ダサい」など、他者を不快にする主観的な否定的意見。
-
-SAFE（許可）:
-
-ポジティブな内容、感謝、日々の発見。
-
-自責や後悔（「自分はダメだ」等）は、他者を攻撃していないためSAFEと判定。
-
-【出力ルール】
-
-SAFEの場合： "SAFE" とのみ出力。
-
-TOXICの場合： 必ず以下の形式（パイプ区切り）で出力してください。
-NG | 理由 | 案1：寄り添い | 案2：内省 | 案3：変換
-
-【言い換え案作成の3つの性格】
-絵文字は一切使用せず、文末のニュアンスだけで以下の3つの人格を表現してください。
-
+文末のニュアンス：
 案1：寄り添い（癒やし系）
-ユーザーのストレスや疲れを包み込み、共感を示す口調。「〜だよね」「〜かもしれないね」といった、隣で話を聞いているような柔らかい表現。
-
 案2：内省（クール・自分軸）
-外部への不満を「自分の感覚の問題」として静かに受け止める口調。「私には合わないかな」「今はこういう気分なんだ」といった、自立した大人の独白表現。
-
 案3：変換（ポジティブ・ユーモア）
-嫌な出来事を「学び」や「ネタ」として捉え直す、少し前向きな口調。「次はこうしてみよう」「これもある意味、貴重な経験だなぁ」といった、視点を変えた表現。
-
-【重要ルール】
-
-「〜しましょう」というアドバイス形式は禁止。
-
-ユーザーがそのまま投稿ボタンを押して使える「独り言」のみを出力すること。
-
-文体はSNSで自然な話し言葉（「〜だなぁ」「〜かも」「〜かな」）を徹底すること。
-案１、２などの表記は不要で、単に言い換え案を３つ列挙してください。`
+「〜しましょう」というアドバイス形式は禁止。ユーザーがそのまま投稿ボタンを押して使える「独り言」のみを出力すること。`
         },
         { 
           role: "user", 
@@ -199,7 +148,6 @@ export async function fetchMainTimelineData(userId: string) {
   }));
 
   return {
-    // parent_idがないもの（メイン投稿）とあるもの（リプライ）を分離
     mainPosts: formattedPosts.filter(p => !p.parent_id),
     replies: formattedPosts.filter(p => p.parent_id),
     friendIds: Array.from(friendMap.keys()) as string[], 
@@ -237,7 +185,6 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 
   return {
     profile: profileRes.data,
-    // プロフィール画面でもリプライは除外して表示
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship: friendshipRes.data,
     isMe: cleanTargetId === currentUserId, 
@@ -266,6 +213,7 @@ export async function createPost(formData: FormData) {
   let imageUrl = null;
   let videoUrl = null;
 
+  // --- ストレージ保存処理 (省略なし) ---
   if (imageFile && imageFile.size > 0) {
     const rawName = imageFile.name || "";
     const fileExt = rawName.includes('.') ? rawName.split('.').pop() : 'jpg';
@@ -294,17 +242,19 @@ export async function createPost(formData: FormData) {
     privacy_level: privacyLevel,
     image_url: imageUrl,
     video_url: videoUrl,
-    parent_id: parentId // リプライの場合に親IDを保存
+    parent_id: parentId 
   });
 
   if (insertError) return { isToxic: false, error: "DB保存失敗" };
 
-  revalidatePath('/');
-  revalidatePath(`/users/${user.id}`);
+  // ★ 修正ポイント：キャッシュの再検証を確実に実行
+  // 'page' だけでなく 'layout' も含めて再検証することで、タイムラインの更新漏れを防ぎます
+  revalidatePath('/', 'layout'); 
+  revalidatePath(`/users/${user.id}`, 'layout');
+  
   return { isToxic: false, success: true };
 }
 
-// createReplyもcreatePostに統合可能ですが、既存の呼び出し箇所のために残しつつ、parent_id対応を強化
 export async function createReply(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
@@ -315,7 +265,6 @@ export async function createReply(formData: FormData) {
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return result;
 
-  // commentsテーブルではなくpostsテーブルにparent_id付きで保存（データ統一）
   await supabase.from('posts').insert({ 
     content, 
     parent_id: parseInt(parentId), 
@@ -324,7 +273,7 @@ export async function createReply(formData: FormData) {
   });
 
   revalidatePath('/');
-  return { isToxic: false };
+  return { isToxic: false, success: true };
 }
 
 /**
@@ -388,8 +337,19 @@ export async function reportPost(postId: number) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, message: "ログインが必要です" };
-  const { error } = await supabase.from('reports').insert({ post_id: postId, reporter_id: user.id });
-  return { success: !error };
+
+  const { error } = await supabase.from('reports').insert({ 
+    post_id: postId, 
+    reporter_id: user.id,
+    reason: '少し悲しくなった' // デフォルト理由
+  });
+
+  if (!error) {
+    // 管理画面を最新にする
+    revalidatePath('/admin/dashboard');
+    return { success: true };
+  }
+  return { success: false };
 }
 
 /**
@@ -411,5 +371,31 @@ export async function deletePost(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   await supabase.from('posts').delete().eq('id', postId);
   revalidatePath('/');
+  revalidatePath('/admin/dashboard'); // 管理画面からも消えるように
   if (user) revalidatePath(`/users/${user.id}`);
+}
+
+export async function getReportedPosts() {
+  const supabase: any = await createClient() 
+
+  const { data, error } = await supabase
+    .from('reports')
+    .select(`
+      *,
+      posts (
+        content,
+        image_url,
+        video_url,
+        authorProfile:profiles!user_id(full_name, avatar_url)
+      ),
+      reporterProfile:profiles!reporter_id(full_name)
+    `)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('Fetch reports error:', error.message)
+    return []
+  }
+
+  return data
 }
