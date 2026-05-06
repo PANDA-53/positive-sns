@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from 'react'
-import { updateProfile, updatePushSubscription } from '../actions' // ★updatePushSubscriptionを追加
+import { useState, useEffect } from 'react' // useEffectを追加
+import { updateProfile, updatePushSubscription } from '../actions'
 import Link from 'next/link'
 import imageCompression from 'browser-image-compression'
 import { toast } from 'sonner'
@@ -12,8 +12,25 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(!!initialSubscription);
   
-  // ★ ここに generate-vapid-keys で取得した公開鍵を貼る
   const VAPID_PUBLIC_KEY = "BJEoIlcIMB4uXEChjfcDjdzdu2wNrVgklCvK2Qyjbulq0FBoM9IFcOPaI3gsv_ZEdAgnngCVICjIqO5baG0ZIvs";
+
+  // ★ 追加：マウント時にブラウザの状態を直接確認して維持する
+  useEffect(() => {
+    async function checkSubscription() {
+      if ('serviceWorker' in navigator && 'PushManager' in window) {
+        try {
+          const registration = await navigator.serviceWorker.ready;
+          const subscription = await registration.pushManager.getSubscription();
+          if (subscription) {
+            setHasSubscription(true);
+          }
+        } catch (e) {
+          console.error("通知状態の確認に失敗しました", e);
+        }
+      }
+    }
+    checkSubscription();
+  }, []);
 
   const handleSubscribe = async () => {
     if (!('serviceWorker' in navigator)) {
@@ -23,7 +40,10 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
 
     setIsSubscribing(true);
     try {
+      // sw.jsの登録を明示的に行う
+      await navigator.serviceWorker.register('/sw.js');
       const registration = await navigator.serviceWorker.ready;
+      
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: VAPID_PUBLIC_KEY
@@ -107,10 +127,10 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
       router.push(userPagePath)
 
     } catch (error: any) {
-      router.refresh()
-      window.location.href = userPagePath 
+      console.error(error)
+      toast.error('更新に失敗しました')
     } finally {
-      setTimeout(() => setIsCompressing(false), 1000)
+      setIsCompressing(false)
     }
   }
 
@@ -162,7 +182,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
                 />
               </div>
 
-              {/* ★ 追加：通知設定セクションをBioの下に配置 */}
               <NotificationSetter 
                 userId={initialProfile?.id} 
                 initialSubscription={initialProfile?.push_subscription} 
