@@ -122,14 +122,32 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
         formData.set('avatar', compressedFile, compressedFile.name)
       }
 
-      await updateProfile(formData)
+      // --- ここを修正 ---
+      const result = await updateProfile(formData) as { error?: string; success?: boolean };
+
+if (result?.error) {
+  toast.error('更新に失敗しました: ' + result.error)
+  return
+}
+
+      // 成功時の処理
       toast.success('プロフィールを更新しました')
+      
+      // router.refresh()の完了を待たずに遷移すると不整合が起きやすいため少し猶予を持たせるか、
+      // 順番を整理します
       router.refresh()
       router.push(userPagePath)
+      // ------------------
 
     } catch (error: any) {
-      console.error(error)
-      toast.error('更新に失敗しました')
+      // Next.jsのredirect()が走るとここに来ることがありますが、
+      // すでに router.push しているので、consoleに出す程度で留めます
+      console.error("Submit Error:", error)
+      
+      // もし遷移が始まっていない（URLが変わっていない）場合だけエラーを出す
+      if (!window.location.pathname.includes(initialProfile?.id)) {
+        toast.error('更新に失敗しました')
+      }
     } finally {
       setIsCompressing(false)
     }
