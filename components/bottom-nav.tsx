@@ -1,26 +1,83 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-// 💡 MessageSquare を除外し、紙飛行機アイコン用の Send を追加インポート
+import { createClient } from '../utils/supabase/client'; // 💡 お使いのクライアント用Supabaseのパスに合わせて調整してください
 import { Home, Search, PlusCircle, Bell, Send, X } from 'lucide-react';
 import PostForm from './post-form'; 
 
 const GOLD_COLOR = "#B8860B";
 
-export function BottomNav() {
+interface BottomNavProps {
+  currentUserId: string; // 💡 ログイン中のユーザーIDを受け取ります
+}
+
+export function BottomNav({ currentUserId }: { currentUserId: string }) {
   const pathname = usePathname();
-  // 投稿ポップアップの開閉状態を管理するステート
   const [isPostOpen, setIsPostOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0); // 🔴 未読通知のカウント用ステート
+  const supabase = createClient();
+
+  // 🛠️ Supabase のリアルタイム機能を利用して未読通知数をカウント・監視する
+  useEffect(() => {
+    if (!currentUserId) return;
+
+    // 1. 初期読み込み時に未読通知の件数を取得
+    const fetchUnreadCount = async () => {
+      const { count, error } = await supabase
+        .from('notifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', currentUserId)
+        .eq('is_read', false);
+
+      if (!error && count !== null) {
+        setUnreadCount(count);
+      }
+    };
+
+    fetchUnreadCount();
+
+    // 2. Supabase Realtime で notifications テーブルの自分宛ての変更を監視
+    const channel = supabase
+      .channel('realtime-notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT も UPDATE もすべてキャッチ
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${currentUserId}`
+        },
+        (payload) => {
+          // 新着通知が来たらカウントを増やす
+          if (payload.eventType === 'INSERT') {
+            setUnreadCount((prev) => prev + 1);
+          }
+          // 通知ページを開くなどして既読(true)にアップデートされたらカウントを減らす
+          if (payload.eventType === 'UPDATE') {
+            const newDoc = payload.new as any;
+            const oldDoc = payload.old as any;
+            if (oldDoc.is_read === false && newDoc.is_read === true) {
+              setUnreadCount((prev) => Math.max(0, prev - 1));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [currentUserId]);
 
   // タブのメニュー定義
   const navItems = [
-    { label: '', href: '/', icon: Home },              // app/page.tsx (トップ画面)
-    { label: '', href: '/search', icon: Search },      // app/search フォルダ
-    { label: '', href: '#', icon: PlusCircle, isTrigger: true }, // ポップアップトリガー
-    { label: '', href: '/notifications', icon: Bell },  // 通知画面用（仮）
-    { label: '', href: '/messages', icon: Send },       // 💡 アイコンを MessageSquare から Send（紙飛行機）に変更
+    { label: '', href: '/', icon: Home },              
+    { label: '', href: '/search', icon: Search },      
+    { label: '', href: '#', icon: PlusCircle, isTrigger: true }, 
+    { label: '', href: '/notifications', icon: Bell },  
+    { label: '', href: '/messages', icon: Send },       
   ];
 
   return (
@@ -31,7 +88,6 @@ export function BottomNav() {
           {navItems.map((item) => {
             const Icon = item.icon;
             
-            // 現在アクティブなタブかどうかの判定（/messages 配下でもアクティブになります）
             const isActive = item.isTrigger 
               ? isPostOpen 
               : (pathname === item.href || pathname.startsWith(item.href + '/'));
@@ -54,27 +110,32 @@ export function BottomNav() {
               );
             }
 
-            // 💡 通常ボタン（Home, Search, 紙飛行機DMなど）の場合の処理
+            // 💡 通常ボタン（Home, Search, Bell, 紙飛行機DMなど）の場合の処理
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => {
-                  // すでにそのページにいる状態でボタンが押されたら最上部へスクロール
                   if (pathname === item.href) {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }
                 }}
-                className="flex flex-col items-center justify-center w-full h-full transition-all active:scale-95"
+                className="flex flex-col items-center justify-center w-full h-full transition-all active:scale-95 relative" // 🛠️ バッジ配置用に relative を追加
               >
                 <Icon
                   size={22}
                   strokeWidth={isActive ? 2.5 : 2}
-                  // 💡 紙飛行機アイコンが右斜め上をきれいに向くよう、アクティブ時のみ少し傾きと色を調整
                   className={`transition-all duration-200 ${item.href === '/messages' && isActive ? '-rotate-12 translate-x-0.5 -translate-y-0.5' : ''}`}
                   style={{ color: isActive ? GOLD_COLOR : '#9CA3AF' }}
                   fill={isActive ? GOLD_COLOR : 'none'}
                 />
+
+                {/* 🛠️ 追記：通知ボタン（Bell）かつ未読件数が1件以上ある場合のみバッジを表示 */}
+                {item.href === '/notifications' && unreadCount > 0 && (
+                  <span className="absolute top-2.5 right-6 bg-rose-500 text-white text-[9px] font-black h-4 min-w-4 px-1 flex items-center justify-center rounded-full ring-2 ring-white animate-pulse">
+                    {unreadCount}
+                  </span>
+                )}
               </Link>
             );
           })}

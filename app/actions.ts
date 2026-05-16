@@ -6,8 +6,7 @@ import { redirect } from 'next/navigation';
 import OpenAI from 'openai';
 import webpush from 'web-push';
 
-
-// 🛠️ 1. フロント側の型エラーを根絶するため、共通の戻り値型を定義
+// フロント側の型エラーを根絶するため、共通の戻り値型を定義
 export interface PostResult {
   isToxic: boolean;
   reason: string;
@@ -15,6 +14,14 @@ export interface PostResult {
   success: boolean;
   errorType?: string;
   error?: string;
+}
+
+interface CreateNotificationParams {
+  userId: string;
+  notifierId: string;
+  type: 'awesome' | 'hug' | 'reply' | 'dm';
+  postId?: number;
+  dmMessageId?: number;
 }
 
 const openai = new OpenAI({
@@ -29,7 +36,38 @@ webpush.setVapidDetails(
 );
 
 /**
- * 指定したユーザーに通知を飛ばす関数
+ * 🛠️ Supabaseの通知テーブル(notifications)へレコードを挿入する内部関数
+ */
+export async function createNotification({
+  userId,
+  notifierId,
+  type,
+  postId,
+  dmMessageId
+}: CreateNotificationParams) {
+  // 自分の行動に対する通知は作成しない
+  if (userId === notifierId) return;
+
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('notifications')
+    .insert({
+      user_id: userId,
+      notifier_id: notifierId,
+      type,
+      post_id: postId,
+      dm_message_id: dmMessageId,
+      is_read: false
+    });
+
+  if (error) {
+    console.error('通知テーブルへのインサートに失敗しました:', error.message);
+  }
+}
+
+/**
+ * 指定したユーザーに通知を飛ばす関数（WebPush）
  */
 async function sendNotificationToUser(userId: string, title: string, body: string, url: string) {
   const supabase = await createClient();
@@ -111,13 +149,11 @@ async function checkAndSuggestContent(content: string): Promise<Omit<PostResult,
     if (result.startsWith("SAFE")) {
       return { isToxic: false, reason: "", suggestions: [] };
     } else {
-      // 🛠️ 改行やパイプなど、AIが出しがちな区切り記号を一気に分解・整形
       const parts = result
         .split(/[|\n]/)
         .map(s => s.trim().replace(/^["「'・\-]|["」']$/g, ''))
         .filter(Boolean);
 
-      // 「案1:」や「- 」などのMarkdownノイズ、解説テキストを徹底排除
       const cleanSuggestions = parts.filter(text => {
         if (!text) return false;
         if (/^[\-\*\=\_~:\s]{2,}$/.test(text)) return false; 
@@ -126,10 +162,8 @@ async function checkAndSuggestContent(content: string): Promise<Omit<PostResult,
         return true;
       });
 
-      // 理由の自動抽出
       const reason = parts.find(p => p.includes("ため") || p.includes("可能性") || p.includes("表現")) || "規約に抵触する可能性があります";
 
-      // 理由を除いた純粋な提案テキストを最大3つに絞り込む
       const finalSuggestions = cleanSuggestions
         .filter(s => s !== reason)
         .slice(0, 3);
@@ -332,7 +366,6 @@ export async function createPost(formData: FormData): Promise<PostResult> {
   if (!user) return redirect('/login');
 
   const result = await checkAndSuggestContent(content);
-  // 🛠️ 有害判定時にも、確実に型をあわせる
   if (result.isToxic) return { ...result, errorType: 'toxic-content', success: false };
 
   let imageUrl = null;
@@ -366,7 +399,6 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     parent_id: parentId 
   });
 
-  // 🛠️ エラー時・成功時、すべてのルートで suggestions と reason を空の初期値として必ず返却する
   if (insertError) {
     return { isToxic: false, reason: "", suggestions: [], success: false, error: "DB保存失敗" };
   }
@@ -375,7 +407,17 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parentId).single();
     if (parentPost && parentPost.user_id !== user.id) {
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+      
+      // 1. WebPush通知
       await sendNotificationToUser(parentPost.user_id, "新しい返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
+      
+      // 🛠️ 2. アプリ内通知データの保存
+      await createNotification({
+        userId: parentPost.user_id,
+        notifierId: user.id,
+        type: 'reply',
+        postId: parentId
+      });
     }
   }
 
@@ -402,13 +444,22 @@ export async function createReply(formData: FormData): Promise<PostResult> {
     privacy_level: 'public'
   });
 
-  // 🛠️ 戻り値の型不一致を解消
   if (insertError) return { success: false, isToxic: false, reason: "", suggestions: [] };
 
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
   if (parentPost && parentPost.user_id !== user.id) {
     const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+    
+    // 1. WebPush通知
     await sendNotificationToUser(parentPost.user_id, "返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
+    
+    // 🛠️ 2. アプリ内通知データの保存
+    await createNotification({
+      userId: parentPost.user_id,
+      notifierId: user.id,
+      type: 'reply',
+      postId: parseInt(parentId)
+    });
   }
 
   revalidatePath('/', 'layout');
@@ -482,9 +533,6 @@ export async function updateProfile(formData: FormData) {
   }
 
   revalidatePath('/', 'layout');
-  
-  // 💡 【重要】サーバーアクション内で redirect() を使うと NEXT_REDIRECT 例外を投げてフロントの try-catch を誤爆させるため、
-  // リダイレクトさせずに成功ステータスだけを綺麗に返すように修正
   return { success: true };
 }
 
@@ -528,7 +576,17 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
     if (post && post.user_id !== user.id) {
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
       const icon = reactionType === 'awesome' ? '✨' : '🫂';
+      
+      // 1. WebPush通知
       await sendNotificationToUser(post.user_id, `${icon} リアクション`, `${myProfile?.full_name || '誰か'}さんがリアクションしました`, `/`);
+      
+      // 🛠️ 2. アプリ内通知データの保存
+      await createNotification({
+        userId: post.user_id,
+        notifierId: user.id,
+        type: reactionType,
+        postId: postId
+      });
     }
   }
   revalidatePath('/');
@@ -600,15 +658,18 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
     return { ...moderatorResult, errorType: 'toxic-content', success: false };
   }
 
-  const { error } = await supabase
+  // 1. メッセージ自体の保存
+  const { data: insertedMsg, error } = await supabase
     .from('direct_messages')
     .insert({
       sender_id: user.id,
       receiver_id: receiverId,
       message: message.trim()
-    });
+    })
+    .select()
+    .single();
 
-  if (error) {
+  if (error || !insertedMsg) {
     console.error("DM送信失敗:", error);
     return { success: false, isToxic: false, reason: "", suggestions: [] };
   }
@@ -619,6 +680,7 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
     .eq('id', user.id)
     .single();
 
+  // 2. WebPush通知
   await sendNotificationToUser(
     receiverId,
     `📩 ${myProfile?.full_name || '誰か'}さんからのメッセージ`,
@@ -626,22 +688,28 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
     `/messages/${user.id}`
   );
 
+  // 🛠️ 3. アプリ内通知データの保存
+  await createNotification({
+    userId: receiverId,
+    notifierId: user.id,
+    type: 'dm',
+    dmMessageId: insertedMsg.id
+  });
+
   return { success: true, isToxic: false, reason: "", suggestions: [] };
 }
 
 /**
- * 💡 追記：ログイン中のユーザーがやり取りしたことのあるチャット相手の一覧と、最新のメッセージを取得する
+ * ログイン中のユーザーがやり取りしたことのあるチャット相手の一覧と、最新のメッセージを取得する
  */
 export async function fetchChatHistoryList() {
   const supabase = await createClient();
   
-  // 1. 現在のユーザーを取得
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
   const currentUserId = user.id;
 
-  // 2. 自分が送信、または受信したメッセージを降順(最新順)で一括取得
   const { data: messages, error } = await supabase
     .from('direct_messages')
     .select('id, sender_id, receiver_id, message, created_at')
@@ -653,19 +721,16 @@ export async function fetchChatHistoryList() {
     return [];
   }
 
-  // 3. ユーザーごとに最新メッセージ1件のみを抽出
   const latestMessagesMap = new Map<string, any>();
 
   for (const msg of messages) {
     const targetUserId = msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
 
-    // 既にMapにある相手はスキップ（降順で取得しているため最初の1つが最新）
     if (!latestMessagesMap.has(targetUserId)) {
       latestMessagesMap.set(targetUserId, msg);
     }
   }
 
-  // 4. チャット相手のプロフィール情報を補完して一覧データを整形
   const chatList = [];
   for (const [targetUserId, latestMsg] of latestMessagesMap.entries()) {
     const { data: profile } = await supabase
