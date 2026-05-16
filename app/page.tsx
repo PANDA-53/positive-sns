@@ -181,12 +181,12 @@ export default function Index() {
           </div>
 
           {/* 右側：アバター画像 */}
-          <div className="flex items-center gap-3 shrink-0">
-            {/* 🛠️ チュートリアル用の目印：id="tutorial-step-profile-nav" を付与し、マイプロフィール（/profile）宛てに調整 */}
-            <Link href="/profile" id="tutorial-step-profile-nav" className="hover:opacity-80 transition-opacity">
-              <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" style={{ borderColor: GOLD_COLOR }} alt="Profile" />
-            </Link>
-          </div>
+<div className="flex items-center gap-3 shrink-0">
+  {/* 💡 遷移先を編集画面から「/users/自分のID」へ変更！未ログイン時のフォールバックも考慮 */}
+  <Link href={user?.id ? `/users/${user.id}` : '/profile'} id="tutorial-step-profile-nav" className="hover:opacity-80 transition-opacity">
+    <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" style={{ borderColor: GOLD_COLOR }} alt="Profile" />
+  </Link>
+</div>
 
         </div>
       </nav>
