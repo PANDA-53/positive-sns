@@ -77,7 +77,7 @@ export function ReplyActionButtons({ replyId, awesomeCount, initialIsAwesome, is
           }`}
         >
           <AlertTriangle size={11} strokeWidth={2.5} />
-          <span>{isReported ? '報告済み' : 'いやな気持ちになった'}</span>
+          <span>{isReported ? '報告済み' : '報告する'}</span>
         </button>
       )}
     </div>

@@ -44,7 +44,7 @@ async function sendNotificationToUser(userId: string, title: string, body: strin
 }
 
 /**
- * SNS「POSITIVES」モデレーター判定ロジック
+ * SNS「POSITIVES」モデレーター判定ロジック（★完全復元版）
  */
 async function checkAndSuggestContent(content: string) {
   try {
@@ -80,12 +80,12 @@ async function checkAndSuggestContent(content: string) {
 
 【投稿とリプライで判定方法、出力方法を変えてください】
 投稿時：
-・基本の判定基準に準ずる。
+1.基本の判定基準に準ずる。
 
 リプライ時：
-・投稿時の判定基準に加え、返信先の文脈を考慮した判定を行う。例えば、返信先がネガティブな内容であっても、ユーザーの返信が自己反省や共感を示すものであればSAFEと判定するなど、より柔軟な判断を行うこと。
-・うざいというリプライに対しては、なぜそう思ったのかを丁寧に伝えられるような案を出すこと。例えば、「うざい」という感情の裏には「自分も同じ経験があるから共感している」「もっと詳しく話を聞きたい」という気持ちが隠れているかもしれないので、そういったニュアンスを汲み取った案を出すこと。
-・投稿内容に共感や寄り添いを示すリプライに関しては表現が多少過剰であっても許可する傾向にすること。`
+1.投稿時の判定基準に加え、返信先の文脈を考慮した判定を行う。例えば、返信先がネガティブな内容であっても、ユーザーの返信が自己反省や共感を示すものであればSAFEと判定するなど、より柔軟な判断を行うこと。
+2.うざいというリプライに対しては、なぜそう思ったのかを丁寧に伝えられるような案を出すこと。例えば、「うざい」という感情の裏には「自分も同じ経験があるから共感している」「もっと詳しく話を聞きたい」という気持ちが隠れているかもしれないので、そういったニュアニュスを汲み取った案を出すこと。
+3.投稿内容に共感や寄り添いを示すリプライに関しては表現が多少過剰であっても許可する傾向にすること。`
         },
         { 
           role: "user", 
@@ -144,7 +144,7 @@ export async function logout() {
 }
 
 /**
- * 2. メインタイムライン用データ取得
+ * 2. メインタイムライン用データ取得 (🛠️ タイムライン上の全ユーザーのAwesome合計数を一括集計)
  */
 export async function fetchMainTimelineData(userId: string) {
   try {
@@ -155,7 +155,6 @@ export async function fetchMainTimelineData(userId: string) {
       supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
     ]);
 
-    // エラー時は確実に空の構造を返す
     if (postsRes.error || friendshipsRes.error) {
       return { mainPosts: [], replies: [], friendIds: [], pendingRequests: [], acceptedFriends: [] };
     }
@@ -167,14 +166,48 @@ export async function fetchMainTimelineData(userId: string) {
     const friendUserIds = friendshipsRaw.map(f => (f.user_id === userId ? f.friend_id : f.user_id));
     const allRelevantIds = Array.from(new Set([...postUserIds, ...friendUserIds, userId])).filter(Boolean);
 
+    // 基本プロファイルを取得
     const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allRelevantIds);
+
+    // 🛠️ 全タイムライン関連ユーザーの「総獲得Awesome数」を抽出・集計
+    let profileAwesomeMap = new Map<string, number>();
+    
+    if (allRelevantIds.length > 0) {
+      // 関連ユーザー全員の全postsのIDと作成者を取得
+      const { data: allUserPosts } = await supabase.from('posts').select('id, user_id').in('user_id', allRelevantIds);
+      const allPostIds = allUserPosts?.map(p => p.id) || [];
+      const postToUserMap = new Map(allUserPosts?.map(p => [p.id, p.user_id]));
+
+      if (allPostIds.length > 0) {
+        // 対象ポストに紐づいているawesomeリアクションを一括取得
+        const { data: allAwesomeReactions } = await supabase
+          .from('reactions')
+          .select('post_id')
+          .eq('type', 'awesome')
+          .in('post_id', allPostIds);
+
+        // 投稿主ごとにAwesome数をマッピング
+        allAwesomeReactions?.forEach(r => {
+          const authorId = postToUserMap.get(r.post_id);
+          if (authorId) {
+            profileAwesomeMap.set(authorId, (profileAwesomeMap.get(authorId) || 0) + 1);
+          }
+        });
+      }
+    }
+
+    // 集計したAwesome数をallProfilesへ統合
+    const enrichedProfiles = allProfiles?.map(prof => ({
+      ...prof,
+      totalAwesome: profileAwesomeMap.get(prof.id) || 0
+    })) || [];
 
     const friendMap = new Map();
     friendshipsRaw
       .filter(f => f.status === 'accepted')
       .forEach(f => {
         const fid = f.user_id === userId ? f.friend_id : f.user_id;
-        const profile = allProfiles?.find(p => p.id === fid);
+        const profile = enrichedProfiles.find(p => p.id === fid);
         if (profile) friendMap.set(fid, profile);
       });
     
@@ -184,13 +217,13 @@ export async function fetchMainTimelineData(userId: string) {
       .filter(f => f.friend_id === userId && f.status === 'pending')
       .map(f => ({
         user_id: f.user_id,
-        sender_profile: allProfiles?.find(p => p.id === f.user_id)
+        sender_profile: enrichedProfiles.find(p => p.id === f.user_id)
       }))
       .filter(req => req.sender_profile);
 
     const formattedPosts = posts.map(post => ({
       ...post,
-      authorProfile: allProfiles?.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '' },
+      authorProfile: enrichedProfiles.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '', totalAwesome: 0 },
       awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
       hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
       myReaction: post.reactions?.find((r: any) => r.user_id === userId)?.type || null,
@@ -216,7 +249,6 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   const supabase = await createClient();
   const cleanTargetId = targetUserId.toLowerCase().trim();
 
-  // ① まず、対象ユーザーが書いた「すべての投稿とコメント」のIDだけをサクッと取得
   const { data: userPosts } = await supabase
     .from('posts')
     .select('id')
@@ -224,14 +256,12 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 
   const postIds = userPosts?.map(p => p.id) || [];
 
-  // ② プロフィール、投稿履歴、フレンド情報、そして「上記IDに紐づくAwesome」を同時並行で取得
   const [profileRes, postsRes, friendshipRes, allReactionsRes, awesomeRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', cleanTargetId).single(),
     supabase.from('posts').select('*').eq('user_id', cleanTargetId).order('created_at', { ascending: false }),
     supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${cleanTargetId}),and(user_id.eq.${cleanTargetId},friend_id.eq.${currentUserId})`).single(),
     supabase.from('reactions').select('*'),
     
-    // 修正ポイント：対象ユーザーの投稿IDリストに含まれるawesomeリアクションのみをカウント
     postIds.length > 0 
       ? supabase.from('reactions').select('id').eq('type', 'awesome').in('post_id', postIds)
       : Promise.resolve({ data: [], error: null })
@@ -239,8 +269,6 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 
   const posts = postsRes.data || [];
   const reactions = allReactionsRes.data || [];
-  
-  // ③ 確実に合算されたAwesome数を取得
   const totalAwesomeCount = awesomeRes.data?.length || 0;
 
   const formattedPosts = posts.map((post: any) => {
@@ -258,20 +286,19 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship: friendshipRes.data,
     isMe: cleanTargetId === currentUserId, 
-    totalAwesomeCount, // 共通のカウント数を返却
+    totalAwesomeCount, 
     error: profileRes.error
   };
 }
 
 /**
- * 4. 投稿・リプライ作成 (修正版)
+ * 4. 投稿・リプライ作成
  */
 export async function createPost(formData: FormData) {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const parentId = formData.get('parent_id') ? parseInt(formData.get('parent_id') as string) : null;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
-  
   const file = formData.get('media') instanceof File ? (formData.get('media') as File) : null;
   
   const { data: { user } } = await supabase.auth.getUser();
@@ -299,8 +326,6 @@ export async function createPost(formData: FormData) {
       } else {
         imageUrl = publicUrl;
       }
-    } else {
-      console.error("ストレージアップロード失敗:", uploadError);
     }
   }
 
@@ -313,32 +338,13 @@ export async function createPost(formData: FormData) {
     parent_id: parentId 
   });
 
-  if (insertError) {
-    console.error("DB保存失敗:", insertError);
-    return { isToxic: false, success: false, error: "DB保存失敗" };
-  }
+  if (insertError) return { isToxic: false, success: false, error: "DB保存失敗" };
 
-  // 通知処理
   if (parentId) {
-    const { data: parentPost } = await supabase
-      .from('posts')
-      .select('user_id')
-      .eq('id', parentId)
-      .single();
-
+    const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parentId).single();
     if (parentPost && parentPost.user_id !== user.id) {
-      const { data: myProfile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-
-      await sendNotificationToUser(
-        parentPost.user_id,
-        "新しい返信",
-        `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
-        `/` 
-      );
+      const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
+      await sendNotificationToUser(parentPost.user_id, "新しい返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
     }
   }
 
@@ -370,17 +376,11 @@ export async function createReply(formData: FormData) {
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
   if (parentPost && parentPost.user_id !== user.id) {
     const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
-    await sendNotificationToUser(
-      parentPost.user_id,
-      "返信",
-      `${myProfile?.full_name || '誰か'}さんから返信が届きました`,
-      `/`
-    );
+    await sendNotificationToUser(parentPost.user_id, "返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
   }
 
   revalidatePath('/', 'layout');
   revalidatePath('/', 'page');
-  revalidatePath('/[userId]', 'page'); 
   return { success: true, isToxic: false };
 }
 
@@ -454,12 +454,7 @@ export async function reportPost(postId: number) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, message: "ログインが必要です" };
 
-  const { error } = await supabase.from('reports').insert({ 
-    post_id: postId, 
-    reporter_id: user.id,
-    reason: '少し悲しくなった' 
-  });
-
+  const { error } = await supabase.from('reports').insert({ post_id: postId, reporter_id: user.id, reason: '少し悲しくなった' });
   if (!error) {
     revalidatePath('/admin/dashboard');
     return { success: true };
@@ -486,12 +481,7 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
     if (post && post.user_id !== user.id) {
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
       const icon = reactionType === 'awesome' ? '✨' : '🫂';
-      await sendNotificationToUser(
-        post.user_id,
-        `${icon} リアクション`,
-        `${myProfile?.full_name || '誰か'}さんがリアクションしました`,
-        `/`
-      );
+      await sendNotificationToUser(post.user_id, `${icon} リアクション`, `${myProfile?.full_name || '誰か'}さんがリアクションしました`, `/`);
     }
   }
   revalidatePath('/');
@@ -511,50 +501,19 @@ export async function getReportedPosts() {
   const supabase: any = await createClient() 
   const { data, error } = await supabase
     .from('reports')
-    .select(`
-      *,
-      posts (
-        content,
-        image_url,
-        video_url,
-        authorProfile:profiles!user_id(full_name, avatar_url)
-      ),
-      reporterProfile:profiles!reporter_id(full_name)
-    `)
+    .select(`*, posts (content, image_url, video_url, authorProfile:profiles!user_id(full_name, avatar_url)), reporterProfile:profiles!reporter_id(full_name)`)
     .order('created_at', { ascending: false })
 
-  if (error) {
-    console.error('Fetch reports error:', error.message)
-    return []
-  }
-  return data
+  if (error) return [];
+  return data;
 }
 
-/**
- * コメント（返信）用の通報アクション
- */
 export async function reportReply(replyId: number) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, message: "ログインが必要です" };
 
-  const { data: existing } = await supabase
-    .from('reports')
-    .select('id')
-    .eq('post_id', replyId)
-    .eq('reporter_id', user.id)
-    .single();
-
-  if (existing) {
-    return { success: false, message: "すでに通報済みです" };
-  }
-
-  const { error } = await supabase.from('reports').insert({ 
-    post_id: replyId, 
-    reporter_id: user.id,
-    reason: 'コメントエリアで少し悲しくなった' 
-  });
-
+  const { error } = await supabase.from('reports').insert({ post_id: replyId, reporter_id: user.id, reason: 'コメントエリアで少し悲しくなった' });
   if (!error) {
     revalidatePath('/');
     revalidatePath('/admin/dashboard'); 

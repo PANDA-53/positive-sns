@@ -1,10 +1,9 @@
 "use client";
 
 import { createClient } from '@/utils/supabase/client'
-import { logout, acceptFriendRequest, fetchMainTimelineData } from './actions'
+import { fetchMainTimelineData } from './actions'
 import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import PostForm from '../components/post-form'
 import Link from 'next/link'
 import PullToRefresh from '../components/pull-to-refresh'
 import FilteredTimeline from '../components/FilteredTimeline'
@@ -14,9 +13,13 @@ const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 
 // 濃いめの金色の定数
 const GOLD_COLOR = "#B8860B"; 
-const LIGHT_GOLD = "#D4AF37";
 
-function MainTimelineContent({ user }: { user: any }) {
+interface MainTimelineContentProps {
+  user: any;
+  viewMode: 'all' | 'friends'; // 💡 ヘッダーから状態を受け取る
+}
+
+function MainTimelineContent({ user, viewMode }: MainTimelineContentProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
@@ -77,7 +80,7 @@ function MainTimelineContent({ user }: { user: any }) {
         </div>
       </section>
 
-      {/* フレンド申請：枠線と文字を金色に */}
+      {/* フレンド申請 */}
       {pendingRequests.length > 0 && (
         <section className="bg-white p-4 rounded-[1.5rem] border-2 border-[#B8860B]/20 space-y-2">
           <h3 className="text-[9px] font-black uppercase tracking-widest px-1" style={{ color: GOLD_COLOR }}>Friend Requests</h3>
@@ -87,7 +90,10 @@ function MainTimelineContent({ user }: { user: any }) {
                 <img src={req.sender_profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover" alt="" />
                 <span className="font-bold text-xs">{req.sender_profile?.full_name}</span>
               </div>
-              <form action={acceptFriendRequest}>
+              <form action={async (formData) => {
+                const { acceptFriendRequest } = await import('./actions');
+                await acceptFriendRequest(formData);
+              }}>
                 <input type="hidden" name="requesterId" value={req.user_id} />
                 <button type="submit" className="text-[10px] text-white px-4 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-all" style={{ backgroundColor: GOLD_COLOR }}>承認</button>
               </form>
@@ -96,14 +102,14 @@ function MainTimelineContent({ user }: { user: any }) {
         </section>
       )}
 
-      <PostForm onSuccess={handlePostSuccess} />
-
+      {/* 💡 FilteredTimeline側に、ヘッダーで切り替えた viewMode を流し込む */}
       <FilteredTimeline 
         mainPosts={mainPosts} 
         replies={replies} 
         user={user} 
         friendIds={friendIds} 
-        onSuccess={handlePostSuccess} 
+        onSuccess={handlePostSuccess}
+        viewModeProp={viewMode} // 💡 あとでFilteredTimeline側でこれを受けるようにします
       />
     </div>
   )
@@ -113,6 +119,10 @@ export default function Index() {
   const [user, setUser] = useState<any>(null)
   const [profile, setProfile] = useState<any>(null)
   const [isInitialLoading, setIsInitialLoading] = useState(true)
+  
+  // 💡 タイムラインの表示モードステートをヘッダーと共有するためにここで管理
+  const [viewMode, setViewMode] = useState<'all' | 'friends'>('all')
+
   const supabase = createClient()
   const router = useRouter()
 
@@ -145,30 +155,45 @@ export default function Index() {
 
   return (
     <main className="min-h-screen bg-[#F2F2F2] font-sans text-black overflow-x-hidden">
-      {/* ナビゲーションバー：ロゴとアイコン、ボタンを金色に */}
+      {/* 🗺️ ナビゲーションバー：中央に切り替えスイッチを綺麗に配置 */}
       <nav className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b h-14 flex items-center px-4">
         <div className="max-w-2xl mx-auto w-full flex justify-between items-center">
-          <h1 className="text-lg font-black tracking-tighter" style={{ color: GOLD_COLOR }}>POSITIVES</h1>
-          <div className="flex items-center gap-3">
-            <Link href="/search" className="p-2 transition-colors" style={{ color: GOLD_COLOR }}>
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
-                <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-              </svg>
-            </Link>
+          
+          {/* 左側：ロゴ */}
+          <h1 className="text-lg font-black tracking-tighter shrink-0" style={{ color: GOLD_COLOR }}>POSITIVES</h1>
+          
+          {/* ✨ 中央：ヘッダー内切り替えスイッチ（少しコンパクトにしてスタイリッシュに） */}
+          <div className="bg-gray-50 p-1 rounded-full flex gap-0.5 border border-gray-100 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] mx-2">
+            <button 
+              onClick={() => setViewMode('all')} 
+              className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all ${viewMode === 'all' ? 'text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+              style={viewMode === 'all' ? { backgroundColor: GOLD_COLOR } : {}}
+            >
+              Public
+            </button>
+            <button 
+              onClick={() => setViewMode('friends')} 
+              className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-wider transition-all ${viewMode === 'friends' ? 'text-white shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+              style={viewMode === 'friends' ? { backgroundColor: GOLD_COLOR } : {}}
+            >
+              Friends
+            </button>
+          </div>
+
+          {/* 右側：アバター画像 */}
+          <div className="flex items-center gap-3 shrink-0">
             <Link href={`/users/${user.id}`} className="hover:opacity-80 transition-opacity">
               <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" style={{ borderColor: GOLD_COLOR }} alt="Profile" />
             </Link>
-            <Link href="/profile" className="text-[10px] font-bold px-3 py-1.5 rounded-full transition-colors" style={{ backgroundColor: '#F9F6E5', color: GOLD_COLOR }}>設定</Link>
-            <form action={logout}>
-              <button className="text-[10px] font-bold transition-colors px-1" style={{ color: GOLD_COLOR }}>ログアウト</button>
-            </form>
           </div>
+
         </div>
       </nav>
 
       <div className="max-w-2xl mx-auto px-4 mt-4">
         <PullToRefresh>
-          <MainTimelineContent user={user} />
+          {/* 💡 選択されている viewMode をコンポーネントに渡す */}
+          <MainTimelineContent user={user} viewMode={viewMode} />
         </PullToRefresh>
       </div>
     </main>
