@@ -85,8 +85,12 @@ export function BottomNav({ currentUserId }: { currentUserId: string }) {
       {/* 1. ボトムナビゲーションバー本体 */}
       {/* 1. ボトムナビゲーションバー本体 */}
 {/* 💡 bottom-0 を bottom-3 にして地面から少し浮かせ、左右に少しマージン（px-4）を持たせて角丸（rounded-2xl）にすると、今風の洗練された浮遊ナビになります！ */}
-<div className="fixed bottom-3 left-0 right-0 z-50 px-4">
-  <div className="max-w-md mx-auto flex justify-around items-center h-16 bg-white/95 backdrop-blur-md border border-gray-100/80 shadow-[0_4px_20px_rgba(0,0,0,0.08)] rounded-2xl">
+{/* パターンB: 下を埋めたまま、高さを出す場合 */}
+<div className="fixed bottom-5 left-0 right-0 z-50 px-5">
+  {/* 💡 bg-[#F9F6E5]/95 で柔らかいベージュ色に（心地よい透過感）。
+      角丸はiPhoneの美しい曲線にフィットする rounded-[2rem] を採用し、
+      影もベージュの背景を邪魔しないソフトな陰影（shadow-[0_8px_32px_rgba(184,134,11,0.12)]）に調整しました */}
+  <div className="max-w-md mx-auto flex justify-around items-center h-16 bg-[#F9F6E5]/95 backdrop-blur-md border border-[#B8860B]/10 shadow-[0_8px_32px_rgba(184,134,11,0.12)] rounded-[2rem]">
           {navItems.map((item) => {
             const Icon = item.icon;
             
