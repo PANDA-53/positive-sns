@@ -1,22 +1,35 @@
-// components/reaction-buttons.tsx (新規作成)
 'use client';
 
 import { AwesomeIcon, HugIcon } from './icons';
 import { handleReaction } from '../app/actions';
 import { useState } from 'react';
+import { toast } from 'sonner'; // トースト通知で優しく伝える用
 
 type Props = {
   postId: number;
   awesomeCount: number;
   hugCount: number;
   initialMyReaction: 'awesome' | 'hug' | null;
+  isOwnPost?: boolean; // ★ 追加：これで親コンポーネントの赤線エラーが完全に消えます
 };
 
-export function ReactionButtons({ postId, awesomeCount, hugCount, initialMyReaction }: Props) {
+export function ReactionButtons({ 
+  postId, 
+  awesomeCount, 
+  hugCount, 
+  initialMyReaction,
+  isOwnPost = false // ★ 追加：初期値をfalseにして安全に受け取ります
+}: Props) {
   const [myReaction, setMyReaction] = useState<'awesome' | 'hug' | null>(initialMyReaction);
   const [counts, setCounts] = useState({ awesome: awesomeCount, hug: hugCount });
 
   const onClickReaction = async (type: 'awesome' | 'hug') => {
+    // ★ 追加：自分の投稿の場合はトーストを出して処理をガード
+    if (isOwnPost) {
+      toast.error('自分の投稿へのリアクションはできません');
+      return;
+    }
+
     // 楽観的アップデート（サーバーの返答を待たずに見た目を変える）
     let newCounts = { ...counts };
     let newMyReaction = null;
@@ -46,7 +59,10 @@ export function ReactionButtons({ postId, awesomeCount, hugCount, initialMyReact
       {/* Awesome Button */}
       <button
         onClick={() => onClickReaction('awesome')}
+        disabled={isOwnPost} // ★ 追加：自分の投稿ならボタンを非活性化
         className={`flex items-center gap-2 group transition-colors ${
+          isOwnPost ? 'opacity-50 cursor-not-allowed' : '' // ★ 追加：自分の投稿の時の見た目
+        } ${
           myReaction === 'awesome' ? 'text-blue-600' : 'text-gray-400'
         }`}
       >
@@ -59,7 +75,10 @@ export function ReactionButtons({ postId, awesomeCount, hugCount, initialMyReact
       {/* Hug Button */}
       <button
         onClick={() => onClickReaction('hug')}
+        disabled={isOwnPost} // ★ 追加：自分の投稿ならボタンを非活性化
         className={`flex items-center gap-2 group transition-colors ${
+          isOwnPost ? 'opacity-50 cursor-not-allowed' : '' // ★ 追加：自分の投稿の時の見た目
+        } ${
           myReaction === 'hug' ? 'text-pink-600' : 'text-gray-400'
         }`}
       >

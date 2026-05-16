@@ -11,16 +11,22 @@ const GOLD_COLOR = "#B8860B";
 async function ProfileContent({ userId }: { userId: string }) {
   const supabase = await createClient()
   
+  // プロフィール情報のみを取得（不要な集計や結合はすべて削除）
   const { data: profile } = await supabase
     .from('profiles')
     .select('full_name, avatar_url, bio')
     .eq('id', userId)
     .single()
 
-  return <ProfileEditForm initialProfile={profile} />
+  return (
+    <div className="space-y-4">
+      {/* 編集フォームのみをすっきりと配置 */}
+      <ProfileEditForm initialProfile={profile} />
+    </div>
+  )
 }
 
-// --- メインのページコンポーネント ---
+// --- メメインのページコンポーネント ---
 export default async function ProfilePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()

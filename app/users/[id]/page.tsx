@@ -6,6 +6,8 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { ReactionButtons } from '@/components/reaction-buttons'
+// 【修正箇所①：UserRankBadge をインポート】
+import { UserRankBadge } from '@/components/user-rank-badge'
 import Link from 'next/link'
 import PullToRefresh from '@/components/pull-to-refresh'
 
@@ -40,12 +42,13 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
     )
   }
 
-  const { profile, mainPosts, isMe } = data
+  // 【修正箇所②：dataの中から totalAwesomeCount も受け取る（※後述のデータ層の準備を参照）】
+  const { profile, mainPosts, isMe, totalAwesomeCount = 0 } = data
 
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4">
       {/* プロフィールカード：名前を金色に、枠線を少し上品に */}
-      <section className="bg-white rounded-[1.5rem] p-6 shadow-sm border border-gray-100 mb-6 text-center relative overflow-hidden">
+      <section className="bg-white rounded-[1.5rem] p-6 shadow-sm border border-gray-100 mb-6 text-center relative overflow-hidden flex flex-col items-center">
         <div className="relative inline-block mb-3">
           <img 
             src={profile.avatar_url || defaultAvatar} 
@@ -59,8 +62,13 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
           {profile.bio || "自己紹介はまだありません。"}
         </p>
 
+        {/* 【修正箇所③：自己紹介の下に、ランクバッジを調和するサイズでマウント】 */}
+        <div className="w-full max-w-sm mb-4">
+          <UserRankBadge totalAwesome={totalAwesomeCount} />
+        </div>
+
         {isMe && (
-          <div className="flex justify-center">
+          <div className="flex justify-center w-full">
             <Link 
               href="/profile" 
               className="flex items-center justify-center gap-2 px-5 py-2 rounded-full text-[10px] font-bold border transition-all active:scale-95 shadow-sm"
@@ -87,7 +95,7 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
                     {new Date(post.created_at).toLocaleDateString('ja-JP')}
                   </span>
                   {post.privacy_level === 'friends' && (
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" style={{ color: GOLD_COLOR }}>
+                    <svg xmlns="http://www.w3.org/2000/xl" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" style={{ color: GOLD_COLOR }}>
                       <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
                     </svg>
                   )}

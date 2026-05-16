@@ -65,7 +65,7 @@ async function checkAndSuggestContent(content: string) {
 
 ・SAFE（受け入れ）：
   - 矛先が「内（自分）」に向いている弱音、悲しみ、後悔。
-  - 喜び、感謝、些細な幸せの共有。
+  - 喜び、感謝、些浅な幸せの共有。
 
 【出力ルール】
 1. SAFEの場合： "SAFE" とのみ出力。
@@ -216,15 +216,32 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   const supabase = await createClient();
   const cleanTargetId = targetUserId.toLowerCase().trim();
 
-  const [profileRes, postsRes, friendshipRes, allReactionsRes] = await Promise.all([
+  // ① まず、対象ユーザーが書いた「すべての投稿とコメント」のIDだけをサクッと取得
+  const { data: userPosts } = await supabase
+    .from('posts')
+    .select('id')
+    .eq('user_id', cleanTargetId);
+
+  const postIds = userPosts?.map(p => p.id) || [];
+
+  // ② プロフィール、投稿履歴、フレンド情報、そして「上記IDに紐づくAwesome」を同時並行で取得
+  const [profileRes, postsRes, friendshipRes, allReactionsRes, awesomeRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', cleanTargetId).single(),
     supabase.from('posts').select('*').eq('user_id', cleanTargetId).order('created_at', { ascending: false }),
     supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${cleanTargetId}),and(user_id.eq.${cleanTargetId},friend_id.eq.${currentUserId})`).single(),
-    supabase.from('reactions').select('*')
+    supabase.from('reactions').select('*'),
+    
+    // 修正ポイント：対象ユーザーの投稿IDリストに含まれるawesomeリアクションのみをカウント
+    postIds.length > 0 
+      ? supabase.from('reactions').select('id').eq('type', 'awesome').in('post_id', postIds)
+      : Promise.resolve({ data: [], error: null })
   ]);
 
   const posts = postsRes.data || [];
   const reactions = allReactionsRes.data || [];
+  
+  // ③ 確実に合算されたAwesome数を取得
+  const totalAwesomeCount = awesomeRes.data?.length || 0;
 
   const formattedPosts = posts.map((post: any) => {
     const postReactions = reactions.filter((r: any) => r.post_id === post.id);
@@ -241,6 +258,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship: friendshipRes.data,
     isMe: cleanTargetId === currentUserId, 
+    totalAwesomeCount, // 共通のカウント数を返却
     error: profileRes.error
   };
 }
@@ -254,7 +272,6 @@ export async function createPost(formData: FormData) {
   const parentId = formData.get('parent_id') ? parseInt(formData.get('parent_id') as string) : null;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
   
-  // ★ 修正ポイント: フロントの name="media" に合わせて取得
   const file = formData.get('media') instanceof File ? (formData.get('media') as File) : null;
   
   const { data: { user } } = await supabase.auth.getUser();
@@ -266,7 +283,6 @@ export async function createPost(formData: FormData) {
   let imageUrl = null;
   let videoUrl = null;
 
-  // ★ 修正ポイント: ファイルが存在する場合の処理を統合
   if (file && file.size > 0 && file.name !== 'undefined') {
     const isVideo = file.type.startsWith('video/');
     const bucketName = isVideo ? 'videos' : 'post_images';
@@ -337,7 +353,6 @@ export async function createReply(formData: FormData) {
   const parentId = formData.get('parentId') as string; 
   const { data: { user } } = await supabase.auth.getUser();
   
-  // 常に isToxic を含める
   if (!user) return { success: false, isToxic: false };
 
   const result = await checkAndSuggestContent(content);
@@ -352,7 +367,6 @@ export async function createReply(formData: FormData) {
 
   if (insertError) return { success: false, isToxic: false };
 
-  // 通知処理（省略せずに実行されます）...
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
   if (parentPost && parentPost.user_id !== user.id) {
     const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
@@ -364,10 +378,9 @@ export async function createReply(formData: FormData) {
     );
   }
 
-  // createReply の return 直前
   revalidatePath('/', 'layout');
   revalidatePath('/', 'page');
-  revalidatePath('/[userId]', 'page'); // プロフィールページ用
+  revalidatePath('/[userId]', 'page'); 
   return { success: true, isToxic: false };
 }
 
@@ -515,4 +528,37 @@ export async function getReportedPosts() {
     return []
   }
   return data
+}
+
+/**
+ * コメント（返信）用の通報アクション
+ */
+export async function reportReply(replyId: number) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { success: false, message: "ログインが必要です" };
+
+  const { data: existing } = await supabase
+    .from('reports')
+    .select('id')
+    .eq('post_id', replyId)
+    .eq('reporter_id', user.id)
+    .single();
+
+  if (existing) {
+    return { success: false, message: "すでに通報済みです" };
+  }
+
+  const { error } = await supabase.from('reports').insert({ 
+    post_id: replyId, 
+    reporter_id: user.id,
+    reason: 'コメントエリアで少し悲しくなった' 
+  });
+
+  if (!error) {
+    revalidatePath('/');
+    revalidatePath('/admin/dashboard'); 
+    return { success: true };
+  }
+  return { success: false };
 }
