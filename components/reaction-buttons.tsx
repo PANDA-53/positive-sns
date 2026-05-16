@@ -10,7 +10,7 @@ type Props = {
   awesomeCount: number;
   hugCount: number;
   initialMyReaction: 'awesome' | 'hug' | null;
-  isOwnPost?: boolean; // ★ 追加：これで親コンポーネントの赤線エラーが完全に消えます
+  isOwnPost?: boolean; 
 };
 
 export function ReactionButtons({ 
@@ -18,13 +18,12 @@ export function ReactionButtons({
   awesomeCount, 
   hugCount, 
   initialMyReaction,
-  isOwnPost = false // ★ 追加：初期値をfalseにして安全に受け取ります
+  isOwnPost = false 
 }: Props) {
   const [myReaction, setMyReaction] = useState<'awesome' | 'hug' | null>(initialMyReaction);
   const [counts, setCounts] = useState({ awesome: awesomeCount, hug: hugCount });
 
   const onClickReaction = async (type: 'awesome' | 'hug') => {
-    // ★ 追加：自分の投稿の場合はトーストを出して処理をガード
     if (isOwnPost) {
       toast.error('自分の投稿へのリアクションはできません');
       return;
@@ -35,13 +34,11 @@ export function ReactionButtons({
     let newMyReaction = null;
 
     if (myReaction === type) {
-      // 同じリアクションを押した場合はキャンセル
       newCounts[type]--;
       newMyReaction = null;
     } else {
-      // 新しいリアクションを押した場合
       if (myReaction) {
-        newCounts[myReaction]--; // 前のリアクションを減らす
+        newCounts[myReaction]--; 
       }
       newCounts[type]++;
       newMyReaction = type;
@@ -50,18 +47,18 @@ export function ReactionButtons({
     setMyReaction(newMyReaction);
     setCounts(newCounts);
 
-    // サーバー側の処理を呼び出す
     await handleReaction(postId, type);
   };
 
   return (
-    <div className="flex items-center gap-6 mt-4 pt-4 border-t border-gray-100">
+    /* 🛠️ 内包されていた mt-4 pt-4 border-t を完全に撤去し、フラットな横並び要素に修正 */
+    <div className="flex items-center gap-6">
       {/* Awesome Button */}
       <button
         onClick={() => onClickReaction('awesome')}
-        disabled={isOwnPost} // ★ 追加：自分の投稿ならボタンを非活性化
+        disabled={isOwnPost} 
         className={`flex items-center gap-2 group transition-colors ${
-          isOwnPost ? 'opacity-50 cursor-not-allowed' : '' // ★ 追加：自分の投稿の時の見た目
+          isOwnPost ? 'opacity-50 cursor-not-allowed' : '' 
         } ${
           myReaction === 'awesome' ? 'text-blue-600' : 'text-gray-400'
         }`}
@@ -75,9 +72,9 @@ export function ReactionButtons({
       {/* Hug Button */}
       <button
         onClick={() => onClickReaction('hug')}
-        disabled={isOwnPost} // ★ 追加：自分の投稿ならボタンを非活性化
+        disabled={isOwnPost} 
         className={`flex items-center gap-2 group transition-colors ${
-          isOwnPost ? 'opacity-50 cursor-not-allowed' : '' // ★ 追加：自分の投稿の時の見た目
+          isOwnPost ? 'opacity-50 cursor-not-allowed' : '' 
         } ${
           myReaction === 'hug' ? 'text-pink-600' : 'text-gray-400'
         }`}

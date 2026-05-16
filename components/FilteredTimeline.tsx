@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ReactionButtons } from './reaction-buttons'
 import { ReplyActionButtons } from './reply-action-buttons' 
 import { toast } from 'sonner'
-import { deletePost, reportPost } from '@/app/actions'
+import { deletePost, reportPost } from '@/app/actions' 
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
 import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, X } from 'lucide-react'
@@ -32,8 +32,6 @@ export default function FilteredTimeline({
 }: FilteredTimelineProps) {
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
-  
-  // 🎬 画像・動画のフルスクリーンポップアップを一元管理するステートに変更
   const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
   
   const router = useRouter();
@@ -79,11 +77,11 @@ export default function FilteredTimeline({
     setReportedPostIds(prev => ({ ...prev, [postId]: true }));
     try {
       const res = await reportPost(postId);
-      if (res.success) {
+      if (res && res.success) {
         toast.success('通報を受け付けました。ご協力ありがとうございます。');
       } else {
         setReportedPostIds(prev => ({ ...prev, [postId]: false }));
-        toast.error(res.message || '処理に失敗しました');
+        toast.error('処理に失敗しました');
       }
     } catch (error) {
       setReportedPostIds(prev => ({ ...prev, [postId]: false }));
@@ -92,7 +90,7 @@ export default function FilteredTimeline({
   };
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-4 pb-24" id="tutorial-step-welcome">
       {visiblePosts.length === 0 ? (
         <div className="text-center py-20 text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD_COLOR }}>
           No posts to show
@@ -103,39 +101,31 @@ export default function FilteredTimeline({
           const postReplies = (replies || []).filter((r: any) => r.parent_id === post.id);
           const isPostReported = !!reportedPostIds[post.id];
 
-          // 💡 Awesome数の安全な取得
           const totalAwesome = 
             post.authorProfile?.total_awesome ?? 
             post.authorProfile?.totalAwesomeCount ?? 
             post.authorProfile?.totalAwesome ?? 0;
 
-          // ❤️ Hug数の安全な取得
           const totalHug = 
             post.authorProfile?.total_hug ?? 
             post.authorProfile?.totalHugCount ?? 
             post.authorProfile?.totalHug ?? 0;
 
-          // 📈 ルート（平方根）計算の経験値システム（最大999）
           const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
 
           return (
             <div key={`timeline-item-${post.id}`} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5 relative">
-              <div className="flex items-center justify-between mb-4">
+              {/* ヘッダーエリア */}
+              <div className="flex items-center justify-between mb-3">
                 <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
                   <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50" alt="" />
                   <div className="flex flex-col">
-                    
-                    {/* ユーザーネームとステータステキスト */}
                     <span className="text-[13px] font-bold text-gray-800 flex items-center flex-wrap gap-x-1.5 gap-y-1">
                       {post.authorProfile?.full_name}
-                      
-                      {/* Awesomeレベル */}
-                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-100/70 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5">
+                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-100/70 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
                         Lv.{calculatedLevel}
                       </span>
-
-                      {/* Hugスコア */}
-                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 border border-rose-100/60 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)]">
+                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 border border-rose-100/60 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
                         {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
                       </span>
                     </span>
@@ -173,7 +163,8 @@ export default function FilteredTimeline({
                 )}
               </div>
 
-              <p className="text-[15px] text-gray-800 mb-4 whitespace-pre-wrap leading-snug px-1">
+              {/* 投稿本文（下の無駄な余白をmb-0で完全にクリア） */}
+              <p className="text-[15px] text-gray-800 mb-0 whitespace-pre-wrap leading-snug px-1">
                 {post.content}
               </p>
 
@@ -181,52 +172,46 @@ export default function FilteredTimeline({
               {post.video_url ? (
                 <div 
                   onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
-                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black cursor-pointer relative group overflow-hidden"
+                  className="mt-2 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black cursor-pointer relative group tutorial-step-media"
                 >
-                  {/* 中央に表示されるカスタム再生オーバーレイ */}
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
-                    <div className="bg-white/20 backdrop-blur-md p-3 rounded-full text-white shadow-md transform scale-95 group-hover:scale-100 transition-transform duration-200">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" className="w-6 h-6">
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </div>
-                  </div>
                   <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
                 </div>
               ) : post.image_url && (
-                /* 🛠️ タイムラインの画像表示エリアも、ホバーアニメーション ＆ タップ対応に拡張 */
                 <div 
                   onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
-                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 cursor-pointer relative group overflow-hidden"
+                  className="mt-2 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 cursor-pointer relative group tutorial-step-media"
                 >
-                  <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 flex items-center justify-center">
-                    <div className="bg-white/30 backdrop-blur-md px-3 py-1.5 rounded-full text-white text-[10px] font-bold tracking-wider opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-1 group-hover:translate-y-0">
-                      拡大する
-                    </div>
-                  </div>
-                  <img src={post.image_url} alt="" className="w-full h-auto block transition-transform duration-300 group-hover:scale-[1.02]" loading="lazy" />
+                  <img src={post.image_url} alt="" className="w-full h-auto block" loading="lazy" />
                 </div>
               )}
 
-              <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
-                <ReactionButtons 
-                  postId={post.id} 
-                  awesomeCount={post.awesomeCount} 
-                  hugCount={post.hugCount} 
-                  initialMyReaction={post.myReaction} 
-                  isOwnPost={post.user_id === user?.id} 
-                />
+              {/* 🛠️ 統合版・ボタン＆アクション区切りエリア */}
+              {/* ここに薄い一本の区切り線を配置し、左右の要素（ReactionとMessage）を同一階層で完璧に水平並び(items-center)にします */}
+              <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100">
                 
+                {/* 左側：Awesome & Hug ボタン列 */}
+                <div className="flex items-center">
+                  <ReactionButtons 
+                    postId={post.id} 
+                    awesomeCount={post.awesomeCount} 
+                    hugCount={post.hugCount} 
+                    initialMyReaction={post.myReaction} 
+                    isOwnPost={post.user_id === user?.id} 
+                  />
+                </div>
+                
+                {/* 右側：吹き出しアイコン */}
                 <button 
                   onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} 
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all ${isCommentOpen ? 'bg-amber-50' : 'text-gray-400'}`}
+                  className="flex items-center gap-2 text-gray-400 hover:text-amber-600 transition-colors"
                   style={isCommentOpen ? { color: GOLD_COLOR } : {}}
                 >
-                  <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? "currentColor" : "none"} />
-                  <span className="text-xs font-black">{postReplies.length}</span>
+                  <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? GOLD_COLOR : "none"} />
+                  <span className="text-xs font-bold leading-none">{postReplies.length}</span>
                 </button>
               </div>
 
+              {/* リプライエリア */}
               {isCommentOpen && (
                 <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2">
                   <div className="space-y-3 mb-6">
@@ -247,19 +232,15 @@ export default function FilteredTimeline({
                         <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
                           <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50" alt="" />
                           <div className="flex-1 bg-gray-50/80 p-3 rounded-2xl relative text-gray-800">
-                            
                             <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-1.5" style={{ color: GOLD_COLOR }}>
                               <span className="text-gray-800">{reply.authorProfile?.full_name}</span>
-                              
                               <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 px-1.5 py-0.2 rounded border border-amber-100/70">
                                 Lv.{replyCalculatedLevel}
                               </span>
-
                               <span className="text-[8px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-1.5 py-0.2 rounded-full">
                                 {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
                               </span>
                             </span>
-
                             <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
                             <ReplyActionButtons 
                               replyId={reply.id}
@@ -280,39 +261,23 @@ export default function FilteredTimeline({
         })
       )}
 
-      {/* 🎬 フルスクリーン・マルチメディアポップアップビューア (画像・動画両対応) */}
+      {/* フルスクリーンポップアップ */}
       {activeMedia && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-200 animate-in fade-in"
-          onClick={() => setActiveMedia(null)} // 背景タップで閉じる
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm"
+          onClick={() => setActiveMedia(null)}
         >
-          {/* 閉じるボタン */}
           <button 
             onClick={() => setActiveMedia(null)}
-            className="absolute top-4 right-4 z-50 p-2.5 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-all active:scale-95"
+            className="absolute top-4 right-4 z-50 p-2.5 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-all"
           >
             <X size={22} strokeWidth={2.5} />
           </button>
-
-          {/* メディアコンテナ */}
-          <div 
-            className="w-full max-w-4xl max-h-[85vh] px-4 flex items-center justify-center animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()} // メディア本体のタップで閉じてしまうバグを防ぐ
-          >
+          <div className="w-full max-w-4xl max-h-[85vh] px-4 flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
             {activeMedia.type === 'video' ? (
-              <video 
-                src={activeMedia.url} 
-                controls 
-                autoPlay 
-                playsInline
-                className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain bg-black"
-              />
+              <video src={activeMedia.url} controls autoPlay playsInline className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl object-contain bg-black" />
             ) : (
-              <img 
-                src={activeMedia.url} 
-                alt="" 
-                className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain bg-black animate-in fade-in duration-300"
-              />
+              <img src={activeMedia.url} alt="" className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl object-contain bg-black" />
             )}
           </div>
         </div>
