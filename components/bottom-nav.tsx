@@ -83,8 +83,10 @@ export function BottomNav({ currentUserId }: { currentUserId: string }) {
   return (
     <>
       {/* 1. ボトムナビゲーションバー本体 */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-t border-gray-100 shadow-[0_-1px_10px_rgba(0,0,0,0.05)] pb-safe">
-        <div className="max-w-md mx-auto flex justify-around items-center h-16">
+      {/* 1. ボトムナビゲーションバー本体 */}
+{/* 💡 bottom-0 を bottom-3 にして地面から少し浮かせ、左右に少しマージン（px-4）を持たせて角丸（rounded-2xl）にすると、今風の洗練された浮遊ナビになります！ */}
+<div className="fixed bottom-3 left-0 right-0 z-50 px-4">
+  <div className="max-w-md mx-auto flex justify-around items-center h-16 bg-white/95 backdrop-blur-md border border-gray-100/80 shadow-[0_4px_20px_rgba(0,0,0,0.08)] rounded-2xl">
           {navItems.map((item) => {
             const Icon = item.icon;
             
