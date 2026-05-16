@@ -117,7 +117,7 @@ async function checkAndSuggestContent(content: string): Promise<Omit<PostResult,
         .map(s => s.trim().replace(/^["「'・\-]|["」']$/g, ''))
         .filter(Boolean);
 
-      // 「案1:」や「- Lazy」などのMarkdownノイズ、解説テキストを徹底排除
+      // 「案1:」や「- 」などのMarkdownノイズ、解説テキストを徹底排除
       const cleanSuggestions = parts.filter(text => {
         if (!text) return false;
         if (/^[\-\*\=\_~:\s]{2,}$/.test(text)) return false; 
@@ -209,13 +209,13 @@ export async function fetchMainTimelineData(userId: string) {
       const postToUserMap = new Map(allUserPosts?.map(p => [p.id, p.user_id]));
 
       if (allPostIds.length > 0) {
-        const { data: allAwesomeRereactions } = await supabase
+        const { data: allAwesomeReactions } = await supabase
           .from('reactions')
           .select('post_id')
           .eq('type', 'awesome')
           .in('post_id', allPostIds);
 
-        allAwesomeRereactions?.forEach(r => {
+        allAwesomeReactions?.forEach(r => {
           const authorId = postToUserMap.get(r.post_id);
           if (authorId) {
             profileAwesomeMap.set(authorId, (profileAwesomeMap.get(authorId) || 0) + 1);
@@ -276,41 +276,17 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   const supabase = await createClient();
   const cleanTargetId = targetUserId.trim();
 
-  // 💡 URLが /profile のままでアクセスされた場合、大文字小文字に関わらず、
-  // まず ilike で profiles テーブルに部分一致・前方一致等で引っかかるか検証、
-  // もしくは存在しない場合は現在のセッションのID（currentUserId）をフォールバックに据える
-  const { data: targetProfile, error: profileError } = await supabase
-    .from('profiles')
-    .select('*')
-    .ilike('id', cleanTargetId)
-    .single();
-
-  // URL末尾が "profile" などでDBにない場合は、ログイン中のユーザー自身のプロフィールを検索
-  let finalProfile = targetProfile;
-  let exactUserId = targetProfile?.id || currentUserId;
-
-  if (profileError || !targetProfile) {
-    const { data: myProfile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', currentUserId)
-      .single();
-    if (myProfile) {
-      finalProfile = myProfile;
-      exactUserId = currentUserId;
-    }
-  }
-
   const { data: userPosts } = await supabase
     .from('posts')
     .select('id')
-    .eq('user_id', exactUserId);
+    .eq('user_id', cleanTargetId);
 
   const postIds = userPosts?.map(p => p.id) || [];
 
-  const [postsRes, friendshipRes, allReactionsRes, awesomeRes] = await Promise.all([
-    supabase.from('posts').select('*').eq('user_id', exactUserId).order('created_at', { ascending: false }),
-    supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${exactUserId}),and(user_id.eq.${exactUserId},friend_id.eq.${currentUserId})`).single(),
+  const [profileRes, postsRes, friendshipRes, allReactionsRes, awesomeRes] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', cleanTargetId).single(),
+    supabase.from('posts').select('*').eq('user_id', cleanTargetId).order('created_at', { ascending: false }),
+    supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${cleanTargetId}),and(user_id.eq.${cleanTargetId},friend_id.eq.${currentUserId})`).single(),
     supabase.from('reactions').select('*'),
     
     postIds.length > 0 
@@ -332,15 +308,13 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
     };
   });
 
-  const isMe = exactUserId.toLowerCase() === currentUserId.toLowerCase();
-
   return {
-    profile: finalProfile,
+    profile: profileRes.data,
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship: friendshipRes.data,
-    isMe: isMe, 
+    isMe: cleanTargetId === currentUserId, 
     totalAwesomeCount, 
-    error: finalProfile ? null : profileError
+    error: profileRes.error
   };
 }
 
@@ -358,6 +332,7 @@ export async function createPost(formData: FormData): Promise<PostResult> {
   if (!user) return redirect('/login');
 
   const result = await checkAndSuggestContent(content);
+  // 🛠️ 有害判定時にも、確実に型をあわせる
   if (result.isToxic) return { ...result, errorType: 'toxic-content', success: false };
 
   let imageUrl = null;
@@ -391,6 +366,7 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     parent_id: parentId 
   });
 
+  // 🛠️ エラー時・成功時、すべてのルートで suggestions と reason を空の初期値として必ず返却する
   if (insertError) {
     return { isToxic: false, reason: "", suggestions: [], success: false, error: "DB保存失敗" };
   }
@@ -426,6 +402,7 @@ export async function createReply(formData: FormData): Promise<PostResult> {
     privacy_level: 'public'
   });
 
+  // 🛠️ 戻り値の型不一致を解消
   if (insertError) return { success: false, isToxic: false, reason: "", suggestions: [] };
 
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
@@ -506,8 +483,9 @@ export async function updateProfile(formData: FormData) {
 
   revalidatePath('/', 'layout');
   
-  // 💡 フロントへ確実に本物のユーザーIDを返却し、安全なクライアントサイド遷移を可能にする
-  return { success: true, userId: user.id };
+  // 💡 【重要】サーバーアクション内で redirect() を使うと NEXT_REDIRECT 例外を投げてフロントの try-catch を誤爆させるため、
+  // リダイレクトさせずに成功ステータスだけを綺麗に返すように修正
+  return { success: true };
 }
 
 export async function updatePushSubscription(subscriptionJson: string) {
@@ -652,15 +630,18 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
 }
 
 /**
- * チャット履歴リスト取得
+ * 💡 追記：ログイン中のユーザーがやり取りしたことのあるチャット相手の一覧と、最新のメッセージを取得する
  */
 export async function fetchChatHistoryList() {
   const supabase = await createClient();
+  
+  // 1. 現在のユーザーを取得
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
   const currentUserId = user.id;
 
+  // 2. 自分が送信、または受信したメッセージを降順(最新順)で一括取得
   const { data: messages, error } = await supabase
     .from('direct_messages')
     .select('id, sender_id, receiver_id, message, created_at')
@@ -672,15 +653,19 @@ export async function fetchChatHistoryList() {
     return [];
   }
 
+  // 3. ユーザーごとに最新メッセージ1件のみを抽出
   const latestMessagesMap = new Map<string, any>();
 
   for (const msg of messages) {
     const targetUserId = msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
+
+    // 既にMapにある相手はスキップ（降順で取得しているため最初の1つが最新）
     if (!latestMessagesMap.has(targetUserId)) {
       latestMessagesMap.set(targetUserId, msg);
     }
   }
 
+  // 4. チャット相手のプロフィール情報を補完して一覧データを整形
   const chatList = [];
   for (const [targetUserId, latestMsg] of latestMessagesMap.entries()) {
     const { data: profile } = await supabase

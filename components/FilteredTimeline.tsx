@@ -92,8 +92,7 @@ export default function FilteredTimeline({
   };
 
   return (
-    /* 🛠️ チュートリアル用の目印：親コンテナに id="tutorial-step-welcome" を追加 */
-    <div className="space-y-4 pb-24" id="tutorial-step-welcome">
+    <div className="space-y-4 pb-24">
       {visiblePosts.length === 0 ? (
         <div className="text-center py-20 text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD_COLOR }}>
           No posts to show
@@ -130,13 +129,13 @@ export default function FilteredTimeline({
                     <span className="text-[13px] font-bold text-gray-800 flex items-center flex-wrap gap-x-1.5 gap-y-1">
                       {post.authorProfile?.full_name}
                       
-                      {/* Awesomeレベル 🛠️ tutorial-step-level クラスを追加 */}
-                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-100/70 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
+                      {/* Awesomeレベル */}
+                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-100/70 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5">
                         Lv.{calculatedLevel}
                       </span>
 
-                      {/* Hugスコア 🛠️ tutorial-step-hug クラスを追加 */}
-                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 border border-rose-100/60 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
+                      {/* Hugスコア */}
+                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 border border-rose-100/60 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)]">
                         {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
                       </span>
                     </span>
@@ -180,10 +179,9 @@ export default function FilteredTimeline({
 
               {/* メディア表示エリア */}
               {post.video_url ? (
-                /* 🛠️ tutorial-step-media クラスを追加 */
                 <div 
                   onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
-                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black cursor-pointer relative group overflow-hidden tutorial-step-media"
+                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black cursor-pointer relative group overflow-hidden"
                 >
                   {/* 中央に表示されるカスタム再生オーバーレイ */}
                   <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
@@ -196,10 +194,10 @@ export default function FilteredTimeline({
                   <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
                 </div>
               ) : post.image_url && (
-                /* 🛠️ tutorial-step-media クラスを追加 */
+                /* 🛠️ タイムラインの画像表示エリアも、ホバーアニメーション ＆ タップ対応に拡張 */
                 <div 
                   onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
-                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 cursor-pointer relative group overflow-hidden tutorial-step-media"
+                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 cursor-pointer relative group overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 flex items-center justify-center">
                     <div className="bg-white/30 backdrop-blur-md px-3 py-1.5 rounded-full text-white text-[10px] font-bold tracking-wider opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-1 group-hover:translate-y-0">

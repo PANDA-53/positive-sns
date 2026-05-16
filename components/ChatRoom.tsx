@@ -90,8 +90,6 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
       <div className="bg-white p-4 border-b border-gray-100 flex items-center justify-between">
         <button 
           type="button"
-          // 💡 修正：Next.jsのrouterではなく、ウィンドウオブジェクトを使って強制的にページを移動させます
-          // これにより、Next.jsが裏で持っている不完全なキャッシュを強制的にすべて吹き飛ばします
           onClick={() => {
             window.location.href = '/messages';
           }} 
@@ -161,11 +159,12 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
 
       {/* 入力フォーム */}
       <form onSubmit={handleSend} className="p-4 bg-white border-t border-gray-100">
+        {/* 💡 text-sm から text-base(16px) に変更して自動ズームを防御。合わせてパディングを p-3 → p-2.5 に微調整してスッキリさせています */}
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="メッセージを入力..."
-          className="w-full p-3 bg-gray-50 rounded-xl text-sm border-none outline-none resize-none text-gray-800 placeholder-gray-400 font-medium"
+          className="w-full p-2.5 bg-gray-50 rounded-xl text-base border-none outline-none resize-none text-gray-800 placeholder-gray-400 font-medium"
           rows={2}
           required
         />

@@ -94,7 +94,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
   const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
   const router = useRouter()
 
-  // 💡 URLが /profile だと initialProfile が取れていない可能性を考慮し、フォールバックを設定
   const userPagePath = initialProfile?.id ? `/users/${initialProfile.id}` : '/'
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -116,7 +115,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
     const formData = new FormData(e.currentTarget)
 
     try {
-      // 1. 画像の最適化圧縮
       const imageFile = formData.get('avatar') as File
       if (imageFile && imageFile.size > 1024 * 1024) {
         const options = { maxSizeMB: 0.9, maxWidthOrHeight: 1200, useWebWorker: true }
@@ -124,7 +122,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
         formData.set('avatar', compressedFile, compressedFile.name)
       }
 
-      // 2. サーバー側のアクションを実行
       const result = await updateProfile(formData) as { error?: string; success?: boolean; userId?: string };
 
       if (result?.error) {
@@ -133,12 +130,10 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
         return
       }
 
-      // 3. 成功通知
       toast.success('プロフィールを更新しました')
       
       router.refresh()
       
-      // 4. 💡 サーバーから戻ってきた「本物の確実なUUID」を最優先してマイページへリダイレクト
       if (result.userId) {
         router.push(`/users/${result.userId}`)
       } else {
@@ -188,21 +183,23 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
             <div className="space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>User Name</label>
+                {/* 💡 text-sm から text-base(16px) に変更してズームを防止 */}
                 <input 
                   name="fullName" 
                   type="text" 
                   defaultValue={initialProfile?.full_name || ''} 
-                  className="w-full p-4 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all text-sm font-bold shadow-inner" 
+                  className="w-full p-3.5 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all text-base font-bold shadow-inner" 
                   required 
                 />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>Bio</label>
+                {/* 💡 こちらも text-base(16px) に変更 */}
                 <textarea 
                   name="bio" 
                   defaultValue={initialProfile?.bio || ''} 
-                  className="w-full p-4 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all min-h-[120px] resize-none text-sm leading-relaxed shadow-inner"
+                  className="w-full p-3.5 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all min-h-[120px] resize-none text-base leading-relaxed shadow-inner"
                 />
               </div>
 
