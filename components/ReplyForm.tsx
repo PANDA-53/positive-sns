@@ -11,6 +11,8 @@ interface PostResult {
   success?: boolean;
 }
 
+const GOLD_COLOR = "#B8860B";
+
 export default function ReplyForm({ parentId, onSuccess }: { parentId: number; onSuccess: () => void }) {
   const [content, setContent] = useState("");
   const [isPending, startTransition] = useTransition();
@@ -19,6 +21,12 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
     suggestions: [],
   });
   const router = useRouter();
+
+  // 🛠️ 入力内容と言い換え案をすべて初期化する処理
+  const handleReset = () => {
+    setContent("");
+    setToxicInfo({ isToxic: false, suggestions: [] });
+  };
 
   const handleSuggestionClick = (suggestedText: string) => {
     setContent(suggestedText);
@@ -44,13 +52,16 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
         }
 
         if (result.success) {
-          setContent("");
-          setToxicInfo({ isToxic: false, suggestions: [] });
-          router.refresh(); 
-          if (onSuccess) {
-            onSuccess(); 
-          }
+          handleReset();
           toast.success("返信しました");
+
+          // 🛠️ データベースの最新状態を確実に反映しタイムラインを更新するため、画面をリロード
+          setTimeout(() => {
+            if (onSuccess) {
+              onSuccess(); 
+            }
+            window.location.reload();
+          }, 300);
         }
       } catch (error) {
         toast.error("エラーが発生しました");
@@ -65,7 +76,7 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
         <div className="bg-gradient-to-br from-amber-50 to-white border border-amber-100 p-3 rounded-2xl animate-in fade-in slide-in-from-top-1">
           <p className="text-[10px] font-bold text-amber-800 mb-2 flex items-center gap-2">
             <span className="w-1 h-1 bg-amber-500 rounded-full animate-pulse" />
-            もう少し柔らかい表現にしてみませんか？
+            今は他の好きな投稿に目を向けませんか？
           </p>
           <div className="flex flex-col gap-1.5">
             {toxicInfo.suggestions.map((text, i) => (
@@ -94,7 +105,19 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
           disabled={isPending}
           required
         />
-        <div className="flex justify-end mt-2">
+        
+        {/* 🛠️ ボタンエリア：RESETボタンを追加し、横並び（flex-row）で美しく配置 */}
+        <div className="flex flex-row justify-end items-center gap-4 mt-2">
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={isPending}
+            className="text-[9px] font-black transition-colors uppercase tracking-[0.15em] disabled:opacity-30 select-none"
+            style={{ color: GOLD_COLOR }}
+          >
+            RESET
+          </button>
+
           <button
             type="submit"
             disabled={isPending || !content.trim()}

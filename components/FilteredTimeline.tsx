@@ -208,8 +208,15 @@ export default function FilteredTimeline({
                       <EmbeddedRankBadge totalAwesome={totalAwesome} />
                     </span>
                     <div className="flex items-center gap-1.5 mt-0.5">
+                      {/* 🛠️ 日付だけでなく時刻（時:分）まで詳細に表示するようフォーマットを拡張 */}
                       <span className="text-[9px] text-gray-400 font-bold">
-                        {new Date(post.created_at).toLocaleDateString()}
+                        {new Date(post.created_at).toLocaleDateString('ja-JP', {
+                          year: 'numeric',
+                          month: 'numeric',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </span>
                       <span className="opacity-80" style={{ color: GOLD_COLOR }}>
                         {post.privacy_level === 'public' ? <Globe size={13} strokeWidth={2.5} /> : <Lock size={13} strokeWidth={2.5} />}

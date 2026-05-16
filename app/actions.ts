@@ -64,12 +64,12 @@ async function checkAndSuggestContent(content: string) {
   - 負のエネルギーを伝染させる強い言葉。
 
 ・SAFE（受け入れ）：
-  - 矛先が「内（自分）」に向いている弱音、悲しみ、後悔。
+  - 矛先が「内（自分）」に向いている弱音、悲しみ、後悔.
   - 喜び、感謝、些浅な幸せの共有。
 
 【出力ルール】
 1. SAFEの場合： "SAFE" とのみ出力。
-2. TOXICの場合： 以下の形式で出力。
+2. TOXICの場合： 以下の形式で案を３つ出力。
     NG | 理由 | 案1 | 案2 | 案3
 
 文末のニュアンス：
@@ -84,7 +84,7 @@ async function checkAndSuggestContent(content: string) {
 
 リプライ時：
 1.投稿時の判定基準に加え、返信先の文脈を考慮した判定を行う。例えば、返信先がネガティブな内容であっても、ユーザーの返信が自己反省や共感を示すものであればSAFEと判定するなど、より柔軟な判断を行うこと。
-2.うざいというリプライに対しては、なぜそう思ったのかを丁寧に伝えられるような案を出すこと。例えば、「うざい」という感情の裏には「自分も同じ経験があるから共感している」「もっと詳しく話を聞きたい」という気持ちが隠れているかもしれないので、そういったニュアニュスを汲み取った案を出すこと。
+
 3.投稿内容に共感や寄り添いを示すリプライに関しては表現が多少過剰であっても許可する傾向にすること。`
         },
         { 
@@ -100,11 +100,33 @@ async function checkAndSuggestContent(content: string) {
     if (result.startsWith("SAFE")) {
       return { isToxic: false, reason: "", suggestions: [] };
     } else {
-      const parts = result.split("|").map(s => s.trim().replace(/^["「']|["」']$/g, ''));
+      // 🛠️ AIが縦棒「|」ではなく改行や不要な文字列を出力した場合のノイズ除去パースロジック
+      const parts = result
+        .split("|")
+        .map(s => s.trim().replace(/^["「']|["」']$/g, ''));
+
+      // 1番目(NG)と2番目(理由)以降の配列（提案候補リスト）から、記号やラベルなどのゴミを取り除く
+      const cleanSuggestions = parts
+        .slice(2)
+        .map(text => {
+          return text
+            .trim()
+            // 冒頭の「案1:」「案1．」「1.」「- 」「* 」などのプレフィックスノイズをきれいに削除
+            .replace(/^(案\d+[:：\s.．\-]*|\d+[:：.．\-]*|[\-\*\+]\s*)/, '')
+            .trim();
+        })
+        .filter(text => {
+          // 空文字列、または「---」「***」などのMarkdown区切り線、ただの「案」という文字のみのノイズ行を排除
+          if (!text) return false;
+          if (/^[\-\*\=\_~]{2,}$/.test(text)) return false; 
+          if (/^案\d*$/.test(text)) return false;
+          return true;
+        });
+
       return { 
         isToxic: true, 
         reason: parts[1] || "規約に抵触する可能性があります", 
-        suggestions: parts.slice(2) 
+        suggestions: cleanSuggestions 
       };
     }
   } catch (error) {

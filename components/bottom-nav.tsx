@@ -17,11 +17,11 @@ export function BottomNav() {
 
   // タブのメニュー定義（実際のフォルダ構成に合わせてマッピング）
   const navItems = [
-    { label: 'Home', href: '/', icon: Home },              // app/page.tsx (トップ画面)
-    { label: 'Search', href: '/search', icon: Search },      // app/search フォルダ
-    { label: 'Post', href: '#', icon: PlusCircle, isTrigger: true }, // ページ遷移せずポップアップを開くトリガー
-    { label: 'Notif', href: '/notifications', icon: Bell },  // 今後の通知機能用（仮）
-    { label: 'DM', href: '/messages', icon: MessageSquare }, // 今後のDM機能用（仮）
+    { label: '', href: '/', icon: Home },              // app/page.tsx (トップ画面)
+    { label: '', href: '/search', icon: Search },      // app/search フォルダ
+    { label: '', href: '#', icon: PlusCircle, isTrigger: true }, // ページ遷移せずポップアップを開くトリガー
+    { label: '', href: '/notifications', icon: Bell },  // 今後の通知機能用（仮）
+    { label: '', href: '/messages', icon: MessageSquare }, // 今後のDM機能用（仮）
   ];
 
   return (

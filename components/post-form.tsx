@@ -85,13 +85,17 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
 
       if (result.success) {
         handleReset();
-        startTransition(() => {
-          router.refresh(); 
+        
+        // 🛠️ 成功時のトーストを表示
+        toast.success(isReply ? "返信しました！" : "投稿しました！");
+
+        // 🛠️ 最も確実にデータベースの最新データを反映しタイムラインを更新するため、画面をリロード
+        setTimeout(() => {
           if (onSuccess) {
             onSuccess();
           }
-        });
-        toast.success(isReply ? "返信しました！" : "投稿しました！");
+          window.location.reload(); 
+        }, 300); // トーストアニメーションが少し見えるように一瞬だけ待ってリロード
       }
 
     } catch (error) {
@@ -137,7 +141,7 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder={isReply ? "優しい返信を送りましょう" : "最近あった、いいことは？"}
-          className={`w-full p-4 rounded-2xl outline-none border-none resize-none transition-all text-base ${
+          className={`w-full p-4 rounded-2xl outline-none border-none resize-none transition-all text-base text-gray-800 placeholder-gray-400 font-medium ${
             toxicInfo.isToxic ? "bg-amber-50/50" : "bg-gray-50/60"
           }`}
           rows={isReply ? 2 : 1}
@@ -163,7 +167,6 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
 
         <div className="flex flex-row justify-between items-center gap-3 mt-4">
           <div className="flex items-center gap-3">
-            {/* メディア選択アイコンをLucideに変更 */}
             <label className="cursor-pointer p-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all flex items-center shadow-sm border border-gray-100">
               <ImageIcon size={18} strokeWidth={2} style={{ color: GOLD_COLOR }} />
               <input
@@ -182,7 +185,6 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
               />
             </label>
 
-            {/* プライバシートグル：アイコンをLucideに変更 */}
             {!isReply && (
               <div className="flex items-center gap-2">
                 <div
