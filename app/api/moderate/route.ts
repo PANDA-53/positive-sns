@@ -59,15 +59,25 @@ export async function POST(request: Request) {
     if (aiResponse.toUpperCase().includes("REJECT")) {
       console.warn(`🚨 有害コンテンツを検知！自動削除を実行します: ${filePath}`);
       
-      // Storageからファイルを物理削除
+      // ① Storageからファイルを物理削除（これは今すでに成功しています！）
       const { error: removeError } = await supabase.storage
         .from(bucketId)
         .remove([filePath]);
 
       if (removeError) console.error("Storageからの削除に失敗:", removeError);
 
-      // (オプション) もしpostsテーブル等にレコードを作っているなら、ここで削除か非表示(is_hidden = true)にする
-      // await supabase.from('posts').update({ is_hidden: true }).eq('image_url', filePath);
+      // ② 【追加】データベースのテーブルからも、この投稿データを削除する！
+      // ※ あなたのプロジェクトのテーブル名（例: 'posts'）や、画像URLが入っているカラム名（例: 'image_url'）に合わせて変更してください
+      const { error: dbError } = await supabase
+        .from('posts') // 💡 テーブル名が違ったらここを書き換えてください（例: 'feeds' など）
+        .delete()
+        .like('image_url', `%${filePath}%`); // 画像のパスが含まれるレコードを削除
+
+      if (dbError) {
+        console.error("データベースからの投稿削除に失敗:", dbError);
+      } else {
+        console.log("データベースからの投稿削除に成功しました！");
+      }
 
       return NextResponse.json({ moderated: true, status: "REJECTED_AND_DELETED" });
     }
