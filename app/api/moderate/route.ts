@@ -66,10 +66,10 @@ export async function POST(request: Request) {
 
       if (removeError) console.error("Storageからの削除に失敗:", removeError);
 
-      // ② 【追加】データベースのテーブルからも、この投稿データを削除する！
-      // ※ あなたのプロジェクトのテーブル名（例: 'posts'）や、画像URLが入っているカラム名（例: 'image_url'）に合わせて変更してください
+      // ② 【ここを追加！】データベースのテーブルからも投稿データを削除する
+      // 💡 もしテーブル名が 'posts' ではない場合は、実際のテーブル名（'feeds'など）に書き換えてください
       const { error: dbError } = await supabase
-        .from('posts') // 💡 テーブル名が違ったらここを書き換えてください（例: 'feeds' など）
+        .from('posts') 
         .delete()
         .like('image_url', `%${filePath}%`); // 画像のパスが含まれるレコードを削除
 
