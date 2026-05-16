@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { ReactionButtons } from './reaction-buttons'
 import { ReplyActionButtons } from './reply-action-buttons' 
@@ -9,9 +9,15 @@ import { deletePost, reportPost } from '@/app/actions'
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
 import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, X } from 'lucide-react'
+import { createClient } from '@supabase/supabase-js'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 const GOLD_COLOR = "#B8860B"; 
+
+// 💡 クライアントサイド用のSupabaseインスタンスを作成
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface FilteredTimelineProps {
   mainPosts: any[];
@@ -30,13 +36,50 @@ export default function FilteredTimeline({
   onSuccess,
   viewModeProp = 'all'
 }: FilteredTimelineProps) {
+  // 💡 リアルタイム更新を反映させるために、投稿データをステート(状態)で管理します
+  const [timelinePosts, setTimelinePosts] = useState<any[]>(mainPosts);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
   const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
   
   const router = useRouter();
 
-  if (!Array.isArray(mainPosts)) {
+  // 親から新しい投稿データ(mainPosts)が降ってきたら同期する
+  useEffect(() => {
+    setTimelinePosts(mainPosts);
+  }, [mainPosts]);
+
+  // 💡 【ここが核心！】裏側での削除・追加を24時間リアルタイム監視する仕組み
+  useEffect(() => {
+    const channel = supabase
+      .channel('timeline-realtime-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // INSERT, UPDATE, DELETE すべてキャッチ
+          schema: 'public',
+          table: 'posts', // あなたの投稿テーブル名
+        },
+        (payload) => {
+          // 🚨 裏でGeminiやユーザーによって投稿が削除（DELETE）されたら、画面からも即座に消す！
+          if (payload.eventType === 'DELETE') {
+            setTimelinePosts((current) => current.filter((p) => p.id !== payload.old.id));
+          }
+          // 📝 新しい投稿（INSERT）があったら、タイムラインの先頭に追加する
+          if (payload.eventType === 'INSERT') {
+            // 新しい投稿が来たらルーターをリフレッシュして最新データを裏で取る
+            router.refresh();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [router]);
+
+  if (!Array.isArray(timelinePosts)) {
     return (
       <div className="text-center py-10 text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD_COLOR }}>
         Syncing Timeline...
@@ -44,7 +87,8 @@ export default function FilteredTimeline({
     );
   }
 
-  const visiblePosts = mainPosts.filter((post: any) => {
+  // 表示可能な投稿をフィルタリング（管理するステートをtimelinePostsに変更）
+  const visiblePosts = timelinePosts.filter((post: any) => {
     if (!post) return false;
     const hasPermission = 
       post.privacy_level === 'public' || 
@@ -163,7 +207,7 @@ export default function FilteredTimeline({
                 )}
               </div>
 
-              {/* 投稿本文（下の無駄な余白をmb-0で完全にクリア） */}
+              {/* 投稿本文 */}
               <p className="text-[15px] text-gray-800 mb-0 whitespace-pre-wrap leading-snug px-1">
                 {post.content}
               </p>
@@ -185,11 +229,8 @@ export default function FilteredTimeline({
                 </div>
               )}
 
-              {/* 🛠️ 統合版・ボタン＆アクション区切りエリア */}
-              {/* ここに薄い一本の区切り線を配置し、左右の要素（ReactionとMessage）を同一階層で完璧に水平並び(items-center)にします */}
+              {/* ボタン＆アクションエリア */}
               <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100">
-                
-                {/* 左側：Awesome & Hug ボタン列 */}
                 <div className="flex items-center">
                   <ReactionButtons 
                     postId={post.id} 
@@ -200,7 +241,6 @@ export default function FilteredTimeline({
                   />
                 </div>
                 
-                {/* 右側：吹き出しアイコン */}
                 <button 
                   onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} 
                   className="flex items-center gap-2 text-gray-400 hover:text-amber-600 transition-colors"
