@@ -15,13 +15,13 @@ export function BottomNav() {
   // 投稿ポップアップの開閉状態を管理するステート
   const [isPostOpen, setIsPostOpen] = useState(false);
 
-  // タブのメニュー定義（実際のフォルダ構成に合わせてマッピング）
+  // タブのメニュー定義（空文字のまま、href でアクティブ判定を行います）
   const navItems = [
     { label: '', href: '/', icon: Home },              // app/page.tsx (トップ画面)
     { label: '', href: '/search', icon: Search },      // app/search フォルダ
     { label: '', href: '#', icon: PlusCircle, isTrigger: true }, // ページ遷移せずポップアップを開くトリガー
     { label: '', href: '/notifications', icon: Bell },  // 今後の通知機能用（仮）
-    { label: '', href: '/messages', icon: MessageSquare }, // 今後のDM機能用（仮）
+    { label: '', href: '/messages', icon: MessageSquare }, // 💡 空文字のままDMルートを指定
   ];
 
   return (
@@ -32,7 +32,7 @@ export function BottomNav() {
           {navItems.map((item) => {
             const Icon = item.icon;
             
-            // 現在アクティブなタブかどうかの判定（Postボタンはポップアップが開いている時に点灯）
+            // 現在アクティブなタブかどうかの判定（/messages やその配下のチャット画面でも点灯します）
             const isActive = item.isTrigger 
               ? isPostOpen 
               : (pathname === item.href || pathname.startsWith(item.href + '/'));
@@ -41,9 +41,9 @@ export function BottomNav() {
             if (item.isTrigger) {
               return (
                 <button
-                  key={item.label}
+                  key={item.href}
                   onClick={() => setIsPostOpen(!isPostOpen)}
-                  className="flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-95"
+                  className="flex flex-col items-center justify-center w-full h-full transition-all active:scale-95"
                 >
                   <Icon
                     size={22}
@@ -51,17 +51,11 @@ export function BottomNav() {
                     className="transition-colors duration-200"
                     style={{ color: isActive ? GOLD_COLOR : '#9CA3AF' }}
                   />
-                  <span
-                    className="text-[9px] font-bold tracking-wider uppercase transition-colors duration-200"
-                    style={{ color: isActive ? GOLD_COLOR : '#9CA3AF' }}
-                  >
-                    {item.label}
-                  </span>
                 </button>
               );
             }
 
-            // 💡 【通常ボタン（Home, Searchなど）の場合の処理】
+            // 💡 【通常ボタン（Home, Search, DMなど）の場合の処理】
             return (
               <Link
                 key={item.href}
@@ -72,7 +66,7 @@ export function BottomNav() {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }
                 }}
-                className="flex flex-col items-center justify-center w-full h-full gap-1 transition-all active:scale-95"
+                className="flex flex-col items-center justify-center w-full h-full transition-all active:scale-95"
               >
                 <Icon
                   size={22}
@@ -81,12 +75,6 @@ export function BottomNav() {
                   style={{ color: isActive ? GOLD_COLOR : '#9CA3AF' }}
                   fill={isActive ? GOLD_COLOR : 'none'}
                 />
-                <span
-                  className="text-[9px] font-bold tracking-wider uppercase transition-colors duration-200"
-                  style={{ color: isActive ? GOLD_COLOR : '#9CA3AF' }}
-                >
-                  {item.label}
-                </span>
               </Link>
             );
           })}
@@ -106,7 +94,6 @@ export function BottomNav() {
           {/* フォームの白枠コンテンツエリア */}
           <div 
             className="relative w-full max-w-md bg-white rounded-t-[2rem] p-6 shadow-2xl pb-safe max-h-[85vh] overflow-y-auto transform transition-transform duration-300"
-            /* 💡 重大なバグ対策：フォーム内のクリックが背後の黒マスクに貫通して閉じてしまうのを防ぐ */
             onClick={(e) => e.stopPropagation()} 
           >
             {/* ポップアップのヘッダー部分 */}
@@ -123,7 +110,7 @@ export function BottomNav() {
               </button>
             </div>
 
-            {/* 💡 実際のポストフォームを配置（投稿完了時に onSuccess が走り、自動でポップアップを閉じます） */}
+            {/* 実際のポストフォームを配置 */}
             <PostForm onSuccess={() => setIsPostOpen(false)} />
           </div>
 

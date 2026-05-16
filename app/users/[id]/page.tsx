@@ -6,10 +6,10 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { ReactionButtons } from '@/components/reaction-buttons'
-// 【修正箇所①：UserRankBadge をインポート】
 import { UserRankBadge } from '@/components/user-rank-badge'
 import Link from 'next/link'
 import PullToRefresh from '@/components/pull-to-refresh'
+import { MessageSquare } from 'lucide-react'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 const GOLD_COLOR = "#B8860B";
@@ -42,12 +42,11 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
     )
   }
 
-  // 【修正箇所②：dataの中から totalAwesomeCount も受け取る（※後述のデータ層の準備を参照）】
   const { profile, mainPosts, isMe, totalAwesomeCount = 0 } = data
 
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4">
-      {/* プロフィールカード：名前を金色に、枠線を少し上品に */}
+      {/* プロフィールカード */}
       <section className="bg-white rounded-[1.5rem] p-6 shadow-sm border border-gray-100 mb-6 text-center relative overflow-hidden flex flex-col items-center">
         <div className="relative inline-block mb-3">
           <img 
@@ -62,13 +61,15 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
           {profile.bio || "自己紹介はまだありません。"}
         </p>
 
-        {/* 【修正箇所③：自己紹介の下に、ランクバッジを調和するサイズでマウント】 */}
+        {/* ランクバッジ */}
         <div className="w-full max-w-sm mb-4">
           <UserRankBadge totalAwesome={totalAwesomeCount} />
         </div>
 
-        {isMe && (
-          <div className="flex justify-center w-full">
+        {/* ボタン表示エリアの制御 */}
+        <div className="flex justify-center w-full gap-3">
+          {isMe ? (
+            /* 自分のページ：プロフィール編集ボタンを表示 */
             <Link 
               href="/profile" 
               className="flex items-center justify-center gap-2 px-5 py-2 rounded-full text-[10px] font-bold border transition-all active:scale-95 shadow-sm"
@@ -76,11 +77,21 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
             >
               <span>プロフィールを編集</span>
             </Link>
-          </div>
-        )}
+          ) : (
+            /* 💡 相手のページ：DMを送るボタンをゴールド（#B8860B）にカラーを統一 */
+            <Link 
+              href={`/messages/${targetId}`}
+              className="flex items-center justify-center gap-2 px-5 py-2 rounded-full text-[10px] font-bold text-white transition-all active:scale-95 shadow-sm hover:opacity-90"
+              style={{ backgroundColor: GOLD_COLOR }}
+            >
+              <MessageSquare size={12} strokeWidth={2.5} />
+              <span>DMを送る</span>
+            </Link>
+          )}
+        </div>
       </section>
 
-      {/* 投稿履歴の見出し：金色に */}
+      {/* 投稿履歴の見出し */}
       <div className="px-1 mb-3">
         <h2 className="text-[10px] font-black uppercase tracking-widest" style={{ color: GOLD_COLOR }}>Posts</h2>
       </div>

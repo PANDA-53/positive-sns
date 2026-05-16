@@ -6,6 +6,16 @@ import { redirect } from 'next/navigation';
 import OpenAI from 'openai';
 import webpush from 'web-push';
 
+// 🛠️ 1. フロント側の型エラーを根絶するため、共通の戻り値型を定義
+export interface PostResult {
+  isToxic: boolean;
+  reason: string;
+  suggestions: string[];
+  success: boolean;
+  errorType?: string;
+  error?: string;
+}
+
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -44,9 +54,9 @@ async function sendNotificationToUser(userId: string, title: string, body: strin
 }
 
 /**
- * SNS「POSITIVES」モデレーター判定ロジック（★完全復元版）
+ * SNS「POSITIVES」モデレーター判定ロジック
  */
-async function checkAndSuggestContent(content: string) {
+async function checkAndSuggestContent(content: string): Promise<Omit<PostResult, "success">> {
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -64,7 +74,7 @@ async function checkAndSuggestContent(content: string) {
   - 負のエネルギーを伝染させる強い言葉。
 
 ・SAFE（受け入れ）：
-  - 矛先が「内（自分）」に向いている弱音、悲しみ、後悔.
+  - 矛先が「内（自分）」に向いている弱音、悲しみ、後悔。
   - 喜び、感謝、些浅な幸せの共有。
 
 【出力ルール】
@@ -78,7 +88,7 @@ async function checkAndSuggestContent(content: string) {
 案3：変換（ポジティブ・ユーモア）
 「〜しましょう」というアドバイス形式は禁止。ユーザーがそのまま投稿ボタンを押して使える「独り言」のみを出力すること。
 
-【投稿とリプライで判定方法、出力方法を変えてください】
+【投稿とリプライで判定方法、出力方法を変してください】
 投稿時：
 1.基本の判定基準に準ずる。
 
@@ -100,33 +110,33 @@ async function checkAndSuggestContent(content: string) {
     if (result.startsWith("SAFE")) {
       return { isToxic: false, reason: "", suggestions: [] };
     } else {
-      // 🛠️ AIが縦棒「|」ではなく改行や不要な文字列を出力した場合のノイズ除去パースロジック
+      // 🛠️ 改行やパイプなど、AIが出しがちな区切り記号を一気に分解・整形
       const parts = result
-        .split("|")
-        .map(s => s.trim().replace(/^["「']|["」']$/g, ''));
+        .split(/[|\n]/)
+        .map(s => s.trim().replace(/^["「'・\-]|["」']$/g, ''))
+        .filter(Boolean);
 
-      // 1番目(NG)と2番目(理由)以降の配列（提案候補リスト）から、記号やラベルなどのゴミを取り除く
-      const cleanSuggestions = parts
-        .slice(2)
-        .map(text => {
-          return text
-            .trim()
-            // 冒頭の「案1:」「案1．」「1.」「- 」「* 」などのプレフィックスノイズをきれいに削除
-            .replace(/^(案\d+[:：\s.．\-]*|\d+[:：.．\-]*|[\-\*\+]\s*)/, '')
-            .trim();
-        })
-        .filter(text => {
-          // 空文字列、または「---」「***」などのMarkdown区切り線、ただの「案」という文字のみのノイズ行を排除
-          if (!text) return false;
-          if (/^[\-\*\=\_~]{2,}$/.test(text)) return false; 
-          if (/^案\d*$/.test(text)) return false;
-          return true;
-        });
+      // 「案1:」や「- 」などのMarkdownノイズ、解説テキストを徹底排除
+      const cleanSuggestions = parts.filter(text => {
+        if (!text) return false;
+        if (/^[\-\*\=\_~:\s]{2,}$/.test(text)) return false; 
+        if (/^(案\d+|NG|理由|判定|TOXIC|変換|内省|寄り添い)/i.test(text)) return false;
+        if (text === content || text === `"${content}"`) return false;
+        return true;
+      });
+
+      // 理由の自動抽出
+      const reason = parts.find(p => p.includes("ため") || p.includes("可能性") || p.includes("表現")) || "規約に抵触する可能性があります";
+
+      // 理由を除いた純粋な提案テキストを最大3つに絞り込む
+      const finalSuggestions = cleanSuggestions
+        .filter(s => s !== reason)
+        .slice(0, 3);
 
       return { 
         isToxic: true, 
-        reason: parts[1] || "規約に抵触する可能性があります", 
-        suggestions: cleanSuggestions 
+        reason: reason, 
+        suggestions: finalSuggestions 
       };
     }
   } catch (error) {
@@ -166,7 +176,7 @@ export async function logout() {
 }
 
 /**
- * 2. メインタイムライン用データ取得 (🛠️ タイムライン上の全ユーザーのAwesome合計数を一括集計)
+ * 2. メインタイムライン用データ取得
  */
 export async function fetchMainTimelineData(userId: string) {
   try {
@@ -188,27 +198,22 @@ export async function fetchMainTimelineData(userId: string) {
     const friendUserIds = friendshipsRaw.map(f => (f.user_id === userId ? f.friend_id : f.user_id));
     const allRelevantIds = Array.from(new Set([...postUserIds, ...friendUserIds, userId])).filter(Boolean);
 
-    // 基本プロファイルを取得
     const { data: allProfiles } = await supabase.from('profiles').select('id, full_name, avatar_url').in('id', allRelevantIds);
 
-    // 🛠️ 全タイムライン関連ユーザーの「総獲得Awesome数」を抽出・集計
     let profileAwesomeMap = new Map<string, number>();
     
     if (allRelevantIds.length > 0) {
-      // 関連ユーザー全員の全postsのIDと作成者を取得
       const { data: allUserPosts } = await supabase.from('posts').select('id, user_id').in('user_id', allRelevantIds);
       const allPostIds = allUserPosts?.map(p => p.id) || [];
       const postToUserMap = new Map(allUserPosts?.map(p => [p.id, p.user_id]));
 
       if (allPostIds.length > 0) {
-        // 対象ポストに紐づいているawesomeリアクションを一括取得
         const { data: allAwesomeReactions } = await supabase
           .from('reactions')
           .select('post_id')
           .eq('type', 'awesome')
           .in('post_id', allPostIds);
 
-        // 投稿主ごとにAwesome数をマッピング
         allAwesomeReactions?.forEach(r => {
           const authorId = postToUserMap.get(r.post_id);
           if (authorId) {
@@ -218,7 +223,6 @@ export async function fetchMainTimelineData(userId: string) {
       }
     }
 
-    // 集計したAwesome数をallProfilesへ統合
     const enrichedProfiles = allProfiles?.map(prof => ({
       ...prof,
       totalAwesome: profileAwesomeMap.get(prof.id) || 0
@@ -316,7 +320,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 /**
  * 4. 投稿・リプライ作成
  */
-export async function createPost(formData: FormData) {
+export async function createPost(formData: FormData): Promise<PostResult> {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const parentId = formData.get('parent_id') ? parseInt(formData.get('parent_id') as string) : null;
@@ -327,6 +331,7 @@ export async function createPost(formData: FormData) {
   if (!user) return redirect('/login');
 
   const result = await checkAndSuggestContent(content);
+  // 🛠️ 有害判定時にも、確実に型をあわせる
   if (result.isToxic) return { ...result, errorType: 'toxic-content', success: false };
 
   let imageUrl = null;
@@ -360,7 +365,10 @@ export async function createPost(formData: FormData) {
     parent_id: parentId 
   });
 
-  if (insertError) return { isToxic: false, success: false, error: "DB保存失敗" };
+  // 🛠️ エラー時・成功時、すべてのルートで suggestions と reason を空の初期値として必ず返却する
+  if (insertError) {
+    return { isToxic: false, reason: "", suggestions: [], success: false, error: "DB保存失敗" };
+  }
 
   if (parentId) {
     const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parentId).single();
@@ -372,16 +380,16 @@ export async function createPost(formData: FormData) {
 
   revalidatePath('/', 'layout');
   revalidatePath('/', 'page');
-  return { isToxic: false, success: true };
+  return { isToxic: false, reason: "", suggestions: [], success: true };
 }
 
-export async function createReply(formData: FormData) {
+export async function createReply(formData: FormData): Promise<PostResult> {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const parentId = formData.get('parentId') as string; 
   const { data: { user } } = await supabase.auth.getUser();
   
-  if (!user) return { success: false, isToxic: false };
+  if (!user) return { success: false, isToxic: false, reason: "", suggestions: [] };
 
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return { ...result, success: false };
@@ -393,7 +401,8 @@ export async function createReply(formData: FormData) {
     privacy_level: 'public'
   });
 
-  if (insertError) return { success: false, isToxic: false };
+  // 🛠️ 戻り値の型不一致を解消
+  if (insertError) return { success: false, isToxic: false, reason: "", suggestions: [] };
 
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
   if (parentPost && parentPost.user_id !== user.id) {
@@ -403,7 +412,7 @@ export async function createReply(formData: FormData) {
 
   revalidatePath('/', 'layout');
   revalidatePath('/', 'page');
-  return { success: true, isToxic: false };
+  return { success: true, isToxic: false, reason: "", suggestions: [] };
 }
 
 /**
@@ -542,4 +551,64 @@ export async function reportReply(replyId: number) {
     return { success: true };
   }
   return { success: false };
+}
+
+/**
+ * 8. DM（ダイレクトメッセージ）機能
+ */
+export async function fetchDirectMessages(targetUserId: string) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from('direct_messages')
+    .select('*')
+    .or(`and(sender_id.eq.${user.id},receiver_id.eq.${targetUserId}),and(sender_id.eq.${targetUserId},receiver_id.eq.${user.id})`)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error("DM取得失敗:", error);
+    return [];
+  }
+  return data;
+}
+
+export async function sendDirectMessage(receiverId: string, message: string): Promise<PostResult> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || !message.trim()) return { success: false, isToxic: false, reason: "", suggestions: [] };
+
+  const moderatorResult = await checkAndSuggestContent(message);
+  if (moderatorResult.isToxic) {
+    return { ...moderatorResult, errorType: 'toxic-content', success: false };
+  }
+
+  const { error } = await supabase
+    .from('direct_messages')
+    .insert({
+      sender_id: user.id,
+      receiver_id: receiverId,
+      message: message.trim()
+    });
+
+  if (error) {
+    console.error("DM送信失敗:", error);
+    return { success: false, isToxic: false, reason: "", suggestions: [] };
+  }
+
+  const { data: myProfile } = await supabase
+    .from('profiles')
+    .select('full_name')
+    .eq('id', user.id)
+    .single();
+
+  await sendNotificationToUser(
+    receiverId,
+    `📩 ${myProfile?.full_name || '誰か'}さんからのメッセージ`,
+    message.length > 20 ? `${message.substring(0, 20)}...` : message,
+    `/messages/${user.id}`
+  );
+
+  return { success: true, isToxic: false, reason: "", suggestions: [] };
 }
