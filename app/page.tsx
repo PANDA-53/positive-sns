@@ -102,14 +102,14 @@ function MainTimelineContent({ user, viewMode }: MainTimelineContentProps) {
         </section>
       )}
 
-      {/* 💡 FilteredTimeline側に、ヘッダーで切り替えた viewMode を流し込む */}
+      {/* FilteredTimeline側に、ヘッダーで切り替えた viewMode を流し込む */}
       <FilteredTimeline 
         mainPosts={mainPosts} 
         replies={replies} 
         user={user} 
         friendIds={friendIds} 
         onSuccess={handlePostSuccess}
-        viewModeProp={viewMode} // 💡 あとでFilteredTimeline側でこれを受けるようにします
+        viewModeProp={viewMode} 
       />
     </div>
   )
@@ -120,7 +120,7 @@ export default function Index() {
   const [profile, setProfile] = useState<any>(null)
   const [isInitialLoading, setIsInitialLoading] = useState(true)
   
-  // 💡 タイムラインの表示モードステートをヘッダーと共有するためにここで管理
+  // タイムラインの表示モードステートをヘッダーと共有するためにここで管理
   const [viewMode, setViewMode] = useState<'all' | 'friends'>('all')
 
   const supabase = createClient()
@@ -162,7 +162,7 @@ export default function Index() {
           {/* 左側：ロゴ */}
           <h1 className="text-lg font-black tracking-tighter shrink-0" style={{ color: GOLD_COLOR }}>POSITIVES</h1>
           
-          {/* ✨ 中央：ヘッダー内切り替えスイッチ（少しコンパクトにしてスタイリッシュに） */}
+          {/* 中央：ヘッダー内切り替えスイッチ */}
           <div className="bg-gray-50 p-1 rounded-full flex gap-0.5 border border-gray-100 shadow-[inset_0_1px_2px_rgba(0,0,0,0.02)] mx-2">
             <button 
               onClick={() => setViewMode('all')} 
@@ -182,7 +182,8 @@ export default function Index() {
 
           {/* 右側：アバター画像 */}
           <div className="flex items-center gap-3 shrink-0">
-            <Link href={`/users/${user.id}`} className="hover:opacity-80 transition-opacity">
+            {/* 🛠️ チュートリアル用の目印：id="tutorial-step-profile-nav" を付与し、マイプロフィール（/profile）宛てに調整 */}
+            <Link href="/profile" id="tutorial-step-profile-nav" className="hover:opacity-80 transition-opacity">
               <img src={profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full border shadow-sm object-cover bg-gray-100" style={{ borderColor: GOLD_COLOR }} alt="Profile" />
             </Link>
           </div>
@@ -192,7 +193,7 @@ export default function Index() {
 
       <div className="max-w-2xl mx-auto px-4 mt-4">
         <PullToRefresh>
-          {/* 💡 選択されている viewMode をコンポーネントに渡す */}
+          {/* 選択されている viewMode をコンポーネントに渡す */}
           <MainTimelineContent user={user} viewMode={viewMode} />
         </PullToRefresh>
       </div>

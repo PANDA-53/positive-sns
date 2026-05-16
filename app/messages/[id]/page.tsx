@@ -1,6 +1,10 @@
+// app/messages/[id]/page.tsx
+
 import ChatRoom from "../../../components/ChatRoom";
-import { createClient } from "@/utils/supabase/server"; // 💡 サーバー側のクラインアントをインポート
-import { fetchUserProfileData } from "@/app/actions"; // 💡 プロフィールを引く既存のaction
+import { createClient } from "@/utils/supabase/server"; 
+import { fetchUserProfileData } from "@/app/actions"; 
+
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{
@@ -16,7 +20,6 @@ export default async function DMPage({ params }: PageProps) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   
-  // ログインしていない場合はとりあえず空文字にするか、ログインへリダイレクト等の処理
   const currentUserId = user?.id || "";
 
   // 相手のユーザー名を actions.ts の既存ロジックから取得
@@ -31,9 +34,14 @@ export default async function DMPage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 flex items-center justify-center p-4">
-      {/* 💡 取得した本物の currentUserId を渡すことで、ChatRoom側で「自分」だと認識できるようになります */}
+    // 💡 変更点1: flex と items-center / justify-center を排除し、UIの計算ズレによるクリック不可を防ぎます
+    <div className="min-h-screen bg-gray-50 pb-24 px-4 pt-4">
+      
+      {/* 💡 変更点2: key={targetUserId} を付与します。
+          これにより、BACKで戻って再度入ってきた時に、Next.jsがキャッシュを使い回さず、
+          ChatRoomコンポーネントを完全にまっさらな状態で強制的に再起動してくれます。 */}
       <ChatRoom 
+        key={targetUserId}
         currentUserId={currentUserId}
         targetUserId={targetUserId}
         targetUserName={targetUserName}

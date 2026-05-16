@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import OpenAI from 'openai';
 import webpush from 'web-push';
 
+
 // 🛠️ 1. フロント側の型エラーを根絶するため、共通の戻り値型を定義
 export interface PostResult {
   isToxic: boolean;
@@ -67,7 +68,7 @@ async function checkAndSuggestContent(content: string): Promise<Omit<PostResult,
 あなたの使命は、投稿から「毒」を抜き、ユーザーの「本音」を誰も傷つかない「輝き」に変えることです。
 
 【判定基準：基本ルール】
-・TOXIC（即書き書き換え対象）：
+・TOXIC（即書き書き書き換え対象）：
   - 攻撃の矛先が「外（他者・社会・特定の誰か）」に向いているもの。
   - 否定的な断定（「〜はダメだ」「〜すべきでない」）。
   - 文脈に潜む「皮肉」や「冷笑」。
@@ -116,7 +117,7 @@ async function checkAndSuggestContent(content: string): Promise<Omit<PostResult,
         .map(s => s.trim().replace(/^["「'・\-]|["」']$/g, ''))
         .filter(Boolean);
 
-      // 「案1:」や「- 」などのMarkdownノイズ、解説テキストを徹底排除
+      // 「案1:」や「- Lazy」などのMarkdownノイズ、解説テキストを徹底排除
       const cleanSuggestions = parts.filter(text => {
         if (!text) return false;
         if (/^[\-\*\=\_~:\s]{2,}$/.test(text)) return false; 
@@ -208,13 +209,13 @@ export async function fetchMainTimelineData(userId: string) {
       const postToUserMap = new Map(allUserPosts?.map(p => [p.id, p.user_id]));
 
       if (allPostIds.length > 0) {
-        const { data: allAwesomeReactions } = await supabase
+        const { data: allAwesomeRereactions } = await supabase
           .from('reactions')
           .select('post_id')
           .eq('type', 'awesome')
           .in('post_id', allPostIds);
 
-        allAwesomeReactions?.forEach(r => {
+        allAwesomeRereactions?.forEach(r => {
           const authorId = postToUserMap.get(r.post_id);
           if (authorId) {
             profileAwesomeMap.set(authorId, (profileAwesomeMap.get(authorId) || 0) + 1);
@@ -273,19 +274,43 @@ export async function fetchMainTimelineData(userId: string) {
  */
 export async function fetchUserProfileData(targetUserId: string, currentUserId: string) {
   const supabase = await createClient();
-  const cleanTargetId = targetUserId.toLowerCase().trim();
+  const cleanTargetId = targetUserId.trim();
+
+  // 💡 URLが /profile のままでアクセスされた場合、大文字小文字に関わらず、
+  // まず ilike で profiles テーブルに部分一致・前方一致等で引っかかるか検証、
+  // もしくは存在しない場合は現在のセッションのID（currentUserId）をフォールバックに据える
+  const { data: targetProfile, error: profileError } = await supabase
+    .from('profiles')
+    .select('*')
+    .ilike('id', cleanTargetId)
+    .single();
+
+  // URL末尾が "profile" などでDBにない場合は、ログイン中のユーザー自身のプロフィールを検索
+  let finalProfile = targetProfile;
+  let exactUserId = targetProfile?.id || currentUserId;
+
+  if (profileError || !targetProfile) {
+    const { data: myProfile } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', currentUserId)
+      .single();
+    if (myProfile) {
+      finalProfile = myProfile;
+      exactUserId = currentUserId;
+    }
+  }
 
   const { data: userPosts } = await supabase
     .from('posts')
     .select('id')
-    .eq('user_id', cleanTargetId);
+    .eq('user_id', exactUserId);
 
   const postIds = userPosts?.map(p => p.id) || [];
 
-  const [profileRes, postsRes, friendshipRes, allReactionsRes, awesomeRes] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', cleanTargetId).single(),
-    supabase.from('posts').select('*').eq('user_id', cleanTargetId).order('created_at', { ascending: false }),
-    supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${cleanTargetId}),and(user_id.eq.${cleanTargetId},friend_id.eq.${currentUserId})`).single(),
+  const [postsRes, friendshipRes, allReactionsRes, awesomeRes] = await Promise.all([
+    supabase.from('posts').select('*').eq('user_id', exactUserId).order('created_at', { ascending: false }),
+    supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${exactUserId}),and(user_id.eq.${exactUserId},friend_id.eq.${currentUserId})`).single(),
     supabase.from('reactions').select('*'),
     
     postIds.length > 0 
@@ -307,13 +332,15 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
     };
   });
 
+  const isMe = exactUserId.toLowerCase() === currentUserId.toLowerCase();
+
   return {
-    profile: profileRes.data,
+    profile: finalProfile,
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship: friendshipRes.data,
-    isMe: cleanTargetId === currentUserId, 
+    isMe: isMe, 
     totalAwesomeCount, 
-    error: profileRes.error
+    error: finalProfile ? null : profileError
   };
 }
 
@@ -331,7 +358,6 @@ export async function createPost(formData: FormData): Promise<PostResult> {
   if (!user) return redirect('/login');
 
   const result = await checkAndSuggestContent(content);
-  // 🛠️ 有害判定時にも、確実に型をあわせる
   if (result.isToxic) return { ...result, errorType: 'toxic-content', success: false };
 
   let imageUrl = null;
@@ -365,7 +391,6 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     parent_id: parentId 
   });
 
-  // 🛠️ エラー時・成功時、すべてのルートで suggestions と reason を空の初期値として必ず返却する
   if (insertError) {
     return { isToxic: false, reason: "", suggestions: [], success: false, error: "DB保存失敗" };
   }
@@ -401,7 +426,6 @@ export async function createReply(formData: FormData): Promise<PostResult> {
     privacy_level: 'public'
   });
 
-  // 🛠️ 戻り値の型不一致を解消
   if (insertError) return { success: false, isToxic: false, reason: "", suggestions: [] };
 
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
@@ -449,7 +473,7 @@ export async function acceptFriendRequest(formData: FormData) {
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return redirect('/login');
+  if (!user) return { error: '認証エラー' };
 
   const fullName = formData.get('fullName') as string;
   const bio = formData.get('bio') as string;
@@ -467,9 +491,23 @@ export async function updateProfile(formData: FormData) {
     }
   }
 
-  await supabase.from('profiles').upsert({ id: user.id, full_name: fullName, bio: bio, avatar_url: avatarUrl, updated_at: new Date().toISOString() });
+  const { error: upsertError } = await supabase.from('profiles').upsert({ 
+    id: user.id, 
+    full_name: fullName, 
+    bio: bio, 
+    avatar_url: avatarUrl, 
+    updated_at: new Date().toISOString() 
+  });
+
+  if (upsertError) {
+    console.error("Profile Update Error:", upsertError);
+    return { error: 'DB更新失敗' };
+  }
+
   revalidatePath('/', 'layout');
-  return redirect(`/users/${user.id}`);
+  
+  // 💡 フロントへ確実に本物のユーザーIDを返却し、安全なクライアントサイド遷移を可能にする
+  return { success: true, userId: user.id };
 }
 
 export async function updatePushSubscription(subscriptionJson: string) {
@@ -611,4 +649,54 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
   );
 
   return { success: true, isToxic: false, reason: "", suggestions: [] };
+}
+
+/**
+ * チャット履歴リスト取得
+ */
+export async function fetchChatHistoryList() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const currentUserId = user.id;
+
+  const { data: messages, error } = await supabase
+    .from('direct_messages')
+    .select('id, sender_id, receiver_id, message, created_at')
+    .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+    .order('created_at', { ascending: false });
+
+  if (error || !messages) {
+    console.error("Error fetching chat list:", error);
+    return [];
+  }
+
+  const latestMessagesMap = new Map<string, any>();
+
+  for (const msg of messages) {
+    const targetUserId = msg.sender_id === currentUserId ? msg.receiver_id : msg.sender_id;
+    if (!latestMessagesMap.has(targetUserId)) {
+      latestMessagesMap.set(targetUserId, msg);
+    }
+  }
+
+  const chatList = [];
+  for (const [targetUserId, latestMsg] of latestMessagesMap.entries()) {
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, avatar_url')
+      .eq('id', targetUserId)
+      .single();
+
+    chatList.push({
+      targetUserId,
+      latestMessage: latestMsg.message,
+      createdAt: latestMsg.created_at,
+      targetName: profile?.full_name || "ユーザー",
+      avatarUrl: profile?.avatar_url || "https://www.gravatar.com/avatar/?d=mp"
+    });
+  }
+
+  return chatList;
 }

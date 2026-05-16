@@ -59,3 +59,37 @@ body {
   width: fit-content !important;
   pointer-events: auto !important;
 }
+
+/* チュートリアルのポップアップをSNS風にリッチに装飾 */
+.custom-tutorial-popover {
+  background: #ffffff !important;
+  color: #1f2937 !important;
+  border-radius: 1.25rem !important;
+  padding: 1.25rem !important;
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1) !important;
+  font-family: sans-serif !important;
+  border: 1px solid #f3f4f6 !important;
+}
+.custom-tutorial-popover .driver-popover-title {
+  font-size: 14px !important;
+  margin-bottom: 8px !important;
+}
+.custom-tutorial-popover .driver-popover-description {
+  font-size: 12px !important;
+  line-height: 1.6 !important;
+  color: #4b5563 !important;
+}
+.custom-tutorial-popover .driver-popover-navigation-btn {
+  background-color: #f3f4f6 !important;
+  color: #374151 !important;
+  border: none !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  border-radius: 9999px !important;
+  padding: 6px 12px !important;
+  text-shadow: none !important;
+}
+.custom-tutorial-popover .driver-popover-next-btn {
+  background-color: #B8860B !important; /* GOLD */
+  color: white !important;
+}

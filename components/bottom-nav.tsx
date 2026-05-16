@@ -3,9 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-// Lucideアイコンから必要なデザインをインポート
-import { Home, Search, PlusCircle, Bell, MessageSquare, X } from 'lucide-react';
-// 既存のポストフォームコンポーネントをインポート
+// 💡 MessageSquare を除外し、紙飛行機アイコン用の Send を追加インポート
+import { Home, Search, PlusCircle, Bell, Send, X } from 'lucide-react';
 import PostForm from './post-form'; 
 
 const GOLD_COLOR = "#B8860B";
@@ -15,13 +14,13 @@ export function BottomNav() {
   // 投稿ポップアップの開閉状態を管理するステート
   const [isPostOpen, setIsPostOpen] = useState(false);
 
-  // タブのメニュー定義（空文字のまま、href でアクティブ判定を行います）
+  // タブのメニュー定義
   const navItems = [
     { label: '', href: '/', icon: Home },              // app/page.tsx (トップ画面)
     { label: '', href: '/search', icon: Search },      // app/search フォルダ
-    { label: '', href: '#', icon: PlusCircle, isTrigger: true }, // ページ遷移せずポップアップを開くトリガー
-    { label: '', href: '/notifications', icon: Bell },  // 今後の通知機能用（仮）
-    { label: '', href: '/messages', icon: MessageSquare }, // 💡 空文字のままDMルートを指定
+    { label: '', href: '#', icon: PlusCircle, isTrigger: true }, // ポップアップトリガー
+    { label: '', href: '/notifications', icon: Bell },  // 通知画面用（仮）
+    { label: '', href: '/messages', icon: Send },       // 💡 アイコンを MessageSquare から Send（紙飛行機）に変更
   ];
 
   return (
@@ -32,12 +31,12 @@ export function BottomNav() {
           {navItems.map((item) => {
             const Icon = item.icon;
             
-            // 現在アクティブなタブかどうかの判定（/messages やその配下のチャット画面でも点灯します）
+            // 現在アクティブなタブかどうかの判定（/messages 配下でもアクティブになります）
             const isActive = item.isTrigger 
               ? isPostOpen 
               : (pathname === item.href || pathname.startsWith(item.href + '/'));
 
-            // 💡 【Post（投稿）ボタンの場合の処理】
+            // 💡 ポスト（投稿）ボタンの場合の処理
             if (item.isTrigger) {
               return (
                 <button
@@ -55,13 +54,13 @@ export function BottomNav() {
               );
             }
 
-            // 💡 【通常ボタン（Home, Search, DMなど）の場合の処理】
+            // 💡 通常ボタン（Home, Search, 紙飛行機DMなど）の場合の処理
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => {
-                  // すでにそのページにいる状態でボタンが押されたら、最上部へスムーズスクロール
+                  // すでにそのページにいる状態でボタンが押されたら最上部へスクロール
                   if (pathname === item.href) {
                     window.scrollTo({ top: 0, behavior: 'smooth' });
                   }
@@ -71,7 +70,8 @@ export function BottomNav() {
                 <Icon
                   size={22}
                   strokeWidth={isActive ? 2.5 : 2}
-                  className="transition-colors duration-200"
+                  // 💡 紙飛行機アイコンが右斜め上をきれいに向くよう、アクティブ時のみ少し傾きと色を調整
+                  className={`transition-all duration-200 ${item.href === '/messages' && isActive ? '-rotate-12 translate-x-0.5 -translate-y-0.5' : ''}`}
                   style={{ color: isActive ? GOLD_COLOR : '#9CA3AF' }}
                   fill={isActive ? GOLD_COLOR : 'none'}
                 />
@@ -85,7 +85,7 @@ export function BottomNav() {
       {isPostOpen && (
         <div className="fixed inset-0 z-[9999] flex items-end justify-center">
           
-          {/* 背景の黒いマスク（ここをタップするとポップアップが閉じる） */}
+          {/* 背景の黒いマスク */}
           <div 
             className="absolute inset-0 bg-black/40 backdrop-blur-sm" 
             onClick={() => setIsPostOpen(false)} 
@@ -110,7 +110,7 @@ export function BottomNav() {
               </button>
             </div>
 
-            {/* 実際のポストフォームを配置 */}
+            {/* ポストフォーム */}
             <PostForm onSuccess={() => setIsPostOpen(false)} />
           </div>
 

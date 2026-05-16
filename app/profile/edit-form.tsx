@@ -94,7 +94,8 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
   const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
   const router = useRouter()
 
-  const userPagePath = `/users/${initialProfile?.id}`
+  // 💡 URLが /profile だと initialProfile が取れていない可能性を考慮し、フォールバックを設定
+  const userPagePath = initialProfile?.id ? `/users/${initialProfile.id}` : '/'
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -113,8 +114,9 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
     setIsCompressing(true)
 
     const formData = new FormData(e.currentTarget)
-    
+
     try {
+      // 1. 画像の最適化圧縮
       const imageFile = formData.get('avatar') as File
       if (imageFile && imageFile.size > 1024 * 1024) {
         const options = { maxSizeMB: 0.9, maxWidthOrHeight: 1200, useWebWorker: true }
@@ -122,45 +124,42 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
         formData.set('avatar', compressedFile, compressedFile.name)
       }
 
-      // --- ここを修正 ---
-      const result = await updateProfile(formData) as { error?: string; success?: boolean };
+      // 2. サーバー側のアクションを実行
+      const result = await updateProfile(formData) as { error?: string; success?: boolean; userId?: string };
 
-if (result?.error) {
-  toast.error('更新に失敗しました: ' + result.error)
-  return
-}
+      if (result?.error) {
+        toast.error('更新に失敗しました: ' + result.error)
+        setIsCompressing(false)
+        return
+      }
 
-      // 成功時の処理
+      // 3. 成功通知
       toast.success('プロフィールを更新しました')
       
-      // router.refresh()の完了を待たずに遷移すると不整合が起きやすいため少し猶予を持たせるか、
-      // 順番を整理します
       router.refresh()
-      router.push(userPagePath)
-      // ------------------
+      
+      // 4. 💡 サーバーから戻ってきた「本物の確実なUUID」を最優先してマイページへリダイレクト
+      if (result.userId) {
+        router.push(`/users/${result.userId}`)
+      } else {
+        router.push(userPagePath)
+      }
 
     } catch (error: any) {
-      // Next.jsのredirect()が走るとここに来ることがありますが、
-      // すでに router.push しているので、consoleに出す程度で留めます
       console.error("Submit Error:", error)
-      
-      // もし遷移が始まっていない（URLが変わっていない）場合だけエラーを出す
-      if (!window.location.pathname.includes(initialProfile?.id)) {
-        toast.error('更新に失敗しました')
-      }
+      toast.error('通信エラーが発生しました')
     } finally {
       setIsCompressing(false)
     }
   }
 
   return (
-    /* 修正箇所：mainからbg/styleでの背景色指定を完全に削除。layout.tsxのbody色が透けて見えます。 */
     <main className="min-h-screen pb-12 font-sans pt-6">
       <div className="max-w-2xl mx-auto px-4">
-        {/* 白いカードがベージュの上で際立つよう、少しだけシャドウを強化しています */}
         <section className="bg-white p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#E2DED0]">
           <form onSubmit={handleSubmit} className="space-y-8">
             
+            {/* アバター画像設定エリア */}
             <div className="flex flex-col items-center gap-4">
               <div className="w-24 h-24 rounded-full overflow-hidden border-4 shadow-md bg-[#FDFCF9]" style={{ borderColor: GOLD_COLOR }}>
                 <img 
@@ -185,6 +184,7 @@ if (result?.error) {
               </label>
             </div>
 
+            {/* 入力フォームエリア */}
             <div className="space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>User Name</label>
@@ -206,12 +206,14 @@ if (result?.error) {
                 />
               </div>
 
+              {/* プッシュ通知設定 */}
               <NotificationSetter 
                 userId={initialProfile?.id} 
                 initialSubscription={initialProfile?.push_subscription} 
               />
             </div>
 
+            {/* ボタンエリア */}
             <div className="space-y-3 pt-4">
               <button 
                 type="submit" 

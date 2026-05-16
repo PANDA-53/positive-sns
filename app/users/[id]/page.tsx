@@ -6,16 +6,23 @@ import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'next/navigation'
 import { ReactionButtons } from '@/components/reaction-buttons'
-import { UserRankBadge } from '@/components/user-rank-badge'
+import { ReplyActionButtons } from '@/components/reply-action-buttons' 
 import Link from 'next/link'
 import PullToRefresh from '@/components/pull-to-refresh'
-import { MessageSquare } from 'lucide-react'
+import ReplyForm from '@/components/ReplyForm'
+import { MessageSquare, MessageCircle, Globe, Lock, X } from 'lucide-react'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 const GOLD_COLOR = "#B8860B";
 
 function UserPageContent({ targetId, currentUserId }: { targetId: string, currentUserId: string }) {
-  const { data, isLoading, isError } = useQuery({
+  // リプライ開閉用のステート管理
+  const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
+
+  // 🎬 画像・動画のフルスクリーンポップアップを一元管理するステート
+  const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
+
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['user-profile', targetId, currentUserId],
     queryFn: () => fetchUserProfileData(targetId, currentUserId),
     staleTime: 1000 * 60,
@@ -42,7 +49,20 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
     )
   }
 
-  const { profile, mainPosts, isMe, totalAwesomeCount = 0 } = data
+  // TypeScriptエラー(赤線)を回避するため、dataから安全にプロパティを抽出
+  const profile = data.profile
+  const mainPosts = data.mainPosts || []
+  const isMe = data.isMe
+  const totalAwesomeCount = data.totalAwesomeCount || 0
+
+  // 型定義エラーを回避する安全なリプライデータの取得方法
+  const replies = (data as any).replies || []
+
+  // Hug数の安全な取得
+  const totalHugCount = profile.total_hug ?? (profile as any).totalHugCount ?? (profile as any).totalHug ?? 0;
+
+  // 📈 ルート（平方根）計算の経験値レベル（最大999）
+  const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesomeCount)) + 1));
 
   return (
     <div className="max-w-2xl mx-auto px-4 pt-4">
@@ -61,15 +81,19 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
           {profile.bio || "自己紹介はまだありません。"}
         </p>
 
-        {/* ランクバッジ */}
-        <div className="w-full max-w-sm mb-4">
-          <UserRankBadge totalAwesome={totalAwesomeCount} />
+        {/* ステータス表示 */}
+        <div className="flex items-center justify-center gap-2 mb-5 w-full max-w-sm">
+          <span className="text-[10px] font-black tracking-wider text-amber-600 bg-amber-50/80 px-3 py-1 rounded-md border border-amber-100 shadow-[0_1px_2px_rgba(0,0,0,0.02)]">
+            Lv.{calculatedLevel}
+          </span>
+          <span className="text-[10px] font-bold text-rose-500 bg-rose-50/70 border border-rose-100/60 px-3 py-1 rounded-full shadow-[0_1px_2px_rgba(244,63,94,0.01)]">
+            {totalHugCount} <span className="text-[9px] font-medium text-rose-400/80">hugged</span>
+          </span>
         </div>
 
-        {/* ボタン表示エリアの制御 */}
+        {/* ボタン表示エリア */}
         <div className="flex justify-center w-full gap-3">
           {isMe ? (
-            /* 自分のページ：プロフィール編集ボタンを表示 */
             <Link 
               href="/profile" 
               className="flex items-center justify-center gap-2 px-5 py-2 rounded-full text-[10px] font-bold border transition-all active:scale-95 shadow-sm"
@@ -78,7 +102,6 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
               <span>プロフィールを編集</span>
             </Link>
           ) : (
-            /* 💡 相手のページ：DMを送るボタンをゴールド（#B8860B）にカラーを統一 */
             <Link 
               href={`/messages/${targetId}`}
               className="flex items-center justify-center gap-2 px-5 py-2 rounded-full text-[10px] font-bold text-white transition-all active:scale-95 shadow-sm hover:opacity-90"
@@ -98,49 +121,177 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
 
       <div className="space-y-3 pb-20">
         {mainPosts.length > 0 ? (
-          mainPosts.map((post: any) => (
-            <div key={post.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] font-bold text-gray-400">
-                    {new Date(post.created_at).toLocaleDateString('ja-JP')}
-                  </span>
-                  {post.privacy_level === 'friends' && (
-                    <svg xmlns="http://www.w3.org/2000/xl" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3" style={{ color: GOLD_COLOR }}>
-                      <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                    </svg>
-                  )}
-                </div>
-              </div>
-              <p className="text-[15px] text-gray-800 mb-4 leading-snug whitespace-pre-wrap">{post.content}</p>
-              
-              {/* メディア表示 */}
-              {post.video_url ? (
-                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
-                  <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto block" />
-                </div>
-              ) : post.image_url && (
-                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
-                  <img src={post.image_url} alt="" className="w-full h-auto block" />
-                </div>
-              )}
+          mainPosts.map((post: any) => {
+            const isCommentOpen = activeCommentId === post.id;
+            const postReplies = replies.filter((r: any) => r.parent_id === post.id);
 
-              <div className="flex items-center">
-                <ReactionButtons 
-                  postId={post.id} 
-                  awesomeCount={post.awesomeCount}
-                  hugCount={post.hugCount}
-                  initialMyReaction={post.myReaction} 
-                />
+            return (
+              <div key={post.id} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[9px] font-bold text-gray-400">
+                      {new Date(post.created_at).toLocaleDateString('ja-JP', {
+                        year: 'numeric',
+                        month: 'numeric',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
+                    <span className="opacity-80" style={{ color: GOLD_COLOR }}>
+                      {post.privacy_level === 'public' ? <Globe size={11} strokeWidth={2.5} /> : <Lock size={11} strokeWidth={2.5} />}
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[15px] text-gray-800 mb-4 leading-snug whitespace-pre-wrap">{post.content}</p>
+                
+                {/* メディア表示エリア */}
+                {post.video_url ? (
+                  <div 
+                    onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
+                    className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black cursor-pointer relative group"
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                      <div className="bg-white/20 backdrop-blur-md p-3 rounded-full text-white shadow-md transform scale-95 group-hover:scale-100 transition-transform duration-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" className="w-6 h-6">
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                    </div>
+                    <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
+                  </div>
+                ) : post.image_url && (
+                  /* 🛠️ 画像表示エリアもタップ可能にし、ホバー時うっすらズーム＆暗転する演出を付与 */
+                  <div 
+                    onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
+                    className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 cursor-pointer relative group overflow-hidden"
+                  >
+                    <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 flex items-center justify-center">
+                      <div className="bg-white/30 backdrop-blur-md px-3 py-1.5 rounded-full text-white text-[10px] font-bold tracking-wider opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-1 group-hover:translate-y-0">
+                        拡大する
+                      </div>
+                    </div>
+                    <img src={post.image_url} alt="" className="w-full h-auto block transition-transform duration-300 group-hover:scale-[1.02]" />
+                  </div>
+                )}
+
+                {/* リアクションとリプライボタン */}
+                <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+                  <ReactionButtons 
+                    postId={post.id} 
+                    awesomeCount={post.awesomeCount}
+                    hugCount={post.hugCount}
+                    initialMyReaction={post.myReaction} 
+                    isOwnPost={post.user_id === currentUserId}
+                  />
+                  
+                  {/* コメント開閉ボタン */}
+                  <button 
+                    onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} 
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-full transition-all ${isCommentOpen ? 'bg-amber-50' : 'text-gray-400'}`}
+                    style={isCommentOpen ? { color: GOLD_COLOR } : {}}
+                  >
+                    <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? "currentColor" : "none"} />
+                    <span className="text-xs font-black">{postReplies.length}</span>
+                  </button>
+                </div>
+
+                {/* コメント展開エリア */}
+                {isCommentOpen && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2">
+                    <div className="space-y-3 mb-6">
+                      {postReplies.map((reply: any) => {
+                        const replyAwesome = 
+                          reply.authorProfile?.total_awesome ?? 
+                          reply.authorProfile?.totalAwesomeCount ?? 
+                          reply.authorProfile?.totalAwesome ?? 0;
+
+                        const replyHug = 
+                          reply.authorProfile?.total_hug ?? 
+                          reply.authorProfile?.totalHugCount ?? 
+                          reply.authorProfile?.totalHug ?? 0;
+
+                        const replyCalculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(replyAwesome)) + 1));
+
+                        return (
+                          <div key={`reply-${reply.id}`} className="flex gap-3 pl-2 text-left">
+                            <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50" alt="" />
+                            <div className="flex-1 bg-gray-50/80 p-3 rounded-2xl relative text-gray-800">
+                              
+                              <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-1.5" style={{ color: GOLD_COLOR }}>
+                                <span className="text-gray-800">{reply.authorProfile?.full_name}</span>
+                                
+                                <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 px-1.5 py-0.2 rounded border border-amber-100/70">
+                                  Lv.{replyCalculatedLevel}
+                                </span>
+
+                                <span className="text-[8px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-1.5 py-0.2 rounded-full">
+                                  {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
+                                </span>
+                              </span>
+
+                              <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
+                              <ReplyActionButtons 
+                                replyId={reply.id}
+                                awesomeCount={reply.awesomeCount}
+                                initialIsAwesome={reply.myReaction === 'awesome'}
+                                isMyComment={reply.user_id === currentUserId}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <ReplyForm parentId={post.id} onSuccess={() => refetch()} />
+                  </div>
+                )}
               </div>
-            </div>
-          ))
+            );
+          })
         ) : (
           <div className="text-center py-16 bg-white/50 rounded-[1.5rem] border border-dashed border-gray-300 text-[10px] font-bold uppercase tracking-widest text-gray-400">
             No posts yet
           </div>
         )}
       </div>
+
+      {/* 🎬 フルスクリーン・マルチメディアポップアップビューア (画像・動画両対応) */}
+      {activeMedia && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-200 animate-in fade-in"
+          onClick={() => setActiveMedia(null)} // 黒い背景部分をタップしても閉じられる親切設計
+        >
+          {/* 閉じるボタン */}
+          <button 
+            onClick={() => setActiveMedia(null)}
+            className="absolute top-4 right-4 z-50 p-2.5 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-all active:scale-95"
+          >
+            <X size={22} strokeWidth={2.5} />
+          </button>
+
+          {/* メディアコンテナ */}
+          <div 
+            className="w-full max-w-4xl max-h-[85vh] px-4 flex items-center justify-center animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()} // メディア本体のタップで閉じてしまうバグを防ぐ
+          >
+            {activeMedia.type === 'video' ? (
+              <video 
+                src={activeMedia.url} 
+                controls 
+                autoPlay 
+                playsInline
+                className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain bg-black"
+              />
+            ) : (
+              <img 
+                src={activeMedia.url} 
+                alt="" 
+                className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain bg-black animate-in fade-in duration-300"
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

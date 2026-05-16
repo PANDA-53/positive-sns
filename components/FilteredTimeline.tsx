@@ -8,101 +8,10 @@ import { toast } from 'sonner'
 import { deletePost, reportPost } from '@/app/actions'
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
-import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, Star, Award } from 'lucide-react'
+import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, X } from 'lucide-react'
 
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 const GOLD_COLOR = "#B8860B"; 
-
-// 🏆 ご提示いただいた「輝きの進化」ランク定義
-const RANK_THRESHOLD = [
-  { level: 1, name: "First Line", min: 0, max: 4, color: "text-amber-500", bg: "bg-amber-50/50", border: "border-amber-100", iconType: "line-1" },
-  { level: 2, name: "Dual Line", min: 5, max: 14, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200/50", iconType: "line-2" },
-  { level: 3, name: "Triple Line", min: 15, max: 39, color: "text-amber-700", bg: "bg-amber-100/40", border: "border-amber-200", iconType: "line-3" },
-  { level: 4, name: "Single Stellar", min: 40, max: 89, color: "text-amber-600", bg: "bg-gradient-to-br from-amber-50 to-orange-50", border: "border-amber-200/60", iconType: "star-1" },
-  { level: 5, name: "Twin Stellar", min: 90, max: 179, color: "text-amber-600", bg: "bg-gradient-to-br from-amber-50 to-orange-100", border: "border-amber-300/60", iconType: "star-2" },
-  { level: 6, name: "Constellation", min: 180, max: 349, color: "text-amber-700", bg: "bg-gradient-to-br from-orange-50 via-amber-50 to-amber-100", border: "border-amber-300 shadow-sm", iconType: "star-3" },
-  { level: 7, name: "Apex Gold", min: 350, max: 649, color: "text-amber-700 font-black", bg: "bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-200/50", border: "border-amber-400/60 shadow-sm", iconType: "crown-minimal" },
-  { level: 8, name: "Eternal Gold", min: 650, max: 999, color: "text-amber-800 font-black", bg: "bg-gradient-to-br from-amber-100/40 via-amber-50 to-yellow-200/60", border: "border-amber-400 shadow-md", iconType: "crown-double" },
-  { level: 9, name: "The Absolute", min: 1000, max: 99999, color: "text-amber-900 font-black tracking-wider", bg: "bg-gradient-to-br from-yellow-100 via-amber-50 to-amber-300/40", border: "border-yellow-500 shadow-lg border-2", iconType: "absolute" },
-];
-
-// ✨ ご提示いただいた美しい幾何学ロジックを、名前の横（インライン）に完全に適合させたコンポーネント
-function EmbeddedRankBadge({ totalAwesome = 0 }: { totalAwesome: number }) {
-  const currentRank = RANK_THRESHOLD.find(
-    (r) => totalAwesome >= r.min && totalAwesome <= r.max
-  ) || RANK_THRESHOLD[0];
-
-  const color = currentRank.color;
-  const lineStyle = "h-[2.5px] bg-amber-400 rounded-full transition-colors duration-300";
-
-  const renderGeometry = () => {
-    switch (currentRank.iconType) {
-      case "line-1":
-        return <div className={`${lineStyle} w-3.5 inline-block`} />;
-      case "line-2":
-        return (
-          <div className="flex flex-col gap-[1.5px] items-center justify-center h-3">
-            <div className={`${lineStyle} w-3.5`} />
-            <div className={`${lineStyle} w-3.5`} />
-          </div>
-        );
-      case "line-3":
-        return (
-          <div className="flex flex-col gap-[1.5px] items-center justify-center h-4">
-            <div className={`${lineStyle} w-3.5`} />
-            <div className={`${lineStyle} w-3.5`} />
-            <div className={`${lineStyle} w-3.5`} />
-          </div>
-        );
-      case "star-1":
-        return <Star size={11} className={`${color} fill-amber-100/50`} strokeWidth={1.5} />;
-      case "star-2":
-        return (
-          <div className="flex gap-0.5 justify-center items-center">
-            <Star size={10} className={`${color} fill-amber-100/50`} strokeWidth={1.5} />
-            <Star size={10} className={`${color} fill-amber-100/50`} strokeWidth={1.5} />
-          </div>
-        );
-      case "star-3":
-        return (
-          <div className="flex flex-col gap-0.5 items-center justify-center relative">
-            <Star size={9} className={`${color} fill-amber-100/50`} strokeWidth={1.5} />
-            <div className="flex gap-0.5">
-              <Star size={8} className={`${color} fill-amber-100/50`} strokeWidth={1.5} />
-              <Star size={8} className={`${color} fill-amber-100/50`} strokeWidth={1.5} />
-            </div>
-          </div>
-        );
-      case "crown-minimal":
-        return (
-          <div className="flex flex-col gap-0.5 items-center justify-center relative">
-            <div className="w-3.5 h-[1.5px] bg-amber-600 rounded-full" />
-            <Star size={10} className={`${color} fill-current`} strokeWidth={1} />
-          </div>
-        );
-      case "crown-double":
-        return (
-          <div className="flex flex-col gap-0.5 items-center justify-center relative">
-            <div className="flex gap-0.5">
-              <Star size={8} className={`${color} fill-current`} strokeWidth={1} />
-              <Star size={8} className={`${color} fill-current`} strokeWidth={1} />
-            </div>
-            <div className="w-3.5 h-[1.5px] bg-amber-700 rounded-full" />
-          </div>
-        );
-      case "absolute":
-        return <Award size={13} className={`${color} fill-amber-100/50`} strokeWidth={1.5} />;
-      default:
-        return <div className={`${lineStyle} w-3.5`} />;
-    }
-  };
-
-  return (
-    <div className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-md border min-w-[20px] min-h-[20px] ml-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${currentRank.bg} ${currentRank.border}`}>
-      {renderGeometry()}
-    </div>
-  )
-}
 
 interface FilteredTimelineProps {
   mainPosts: any[];
@@ -123,6 +32,10 @@ export default function FilteredTimeline({
 }: FilteredTimelineProps) {
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
+  
+  // 🎬 画像・動画のフルスクリーンポップアップを一元管理するステートに変更
+  const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
+  
   const router = useRouter();
 
   if (!Array.isArray(mainPosts)) {
@@ -179,7 +92,8 @@ export default function FilteredTimeline({
   };
 
   return (
-    <div className="space-y-4 pb-24">
+    /* 🛠️ チュートリアル用の目印：親コンテナに id="tutorial-step-welcome" を追加 */
+    <div className="space-y-4 pb-24" id="tutorial-step-welcome">
       {visiblePosts.length === 0 ? (
         <div className="text-center py-20 text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD_COLOR }}>
           No posts to show
@@ -190,11 +104,20 @@ export default function FilteredTimeline({
           const postReplies = (replies || []).filter((r: any) => r.parent_id === post.id);
           const isPostReported = !!reportedPostIds[post.id];
 
-          // 💡 ブレを防ぐため、存在し得るすべてのAwesome数のフィールド名を安全にフォールバック取得
+          // 💡 Awesome数の安全な取得
           const totalAwesome = 
             post.authorProfile?.total_awesome ?? 
             post.authorProfile?.totalAwesomeCount ?? 
             post.authorProfile?.totalAwesome ?? 0;
+
+          // ❤️ Hug数の安全な取得
+          const totalHug = 
+            post.authorProfile?.total_hug ?? 
+            post.authorProfile?.totalHugCount ?? 
+            post.authorProfile?.totalHug ?? 0;
+
+          // 📈 ルート（平方根）計算の経験値システム（最大999）
+          const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
 
           return (
             <div key={`timeline-item-${post.id}`} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5 relative">
@@ -202,13 +125,23 @@ export default function FilteredTimeline({
                 <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
                   <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50" alt="" />
                   <div className="flex flex-col">
-                    {/* 🛠️ 名前の真横に、クリアな質感の台座枠付きで幾何学バッジをマウント */}
-                    <span className="text-[13px] font-bold text-gray-800 flex items-center">
+                    
+                    {/* ユーザーネームとステータステキスト */}
+                    <span className="text-[13px] font-bold text-gray-800 flex items-center flex-wrap gap-x-1.5 gap-y-1">
                       {post.authorProfile?.full_name}
-                      <EmbeddedRankBadge totalAwesome={totalAwesome} />
+                      
+                      {/* Awesomeレベル 🛠️ tutorial-step-level クラスを追加 */}
+                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-100/70 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
+                        Lv.{calculatedLevel}
+                      </span>
+
+                      {/* Hugスコア 🛠️ tutorial-step-hug クラスを追加 */}
+                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 border border-rose-100/60 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
+                        {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
+                      </span>
                     </span>
+
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      {/* 🛠️ 日付だけでなく時刻（時:分）まで詳細に表示するようフォーマットを拡張 */}
                       <span className="text-[9px] text-gray-400 font-bold">
                         {new Date(post.created_at).toLocaleDateString('ja-JP', {
                           year: 'numeric',
@@ -245,13 +178,35 @@ export default function FilteredTimeline({
                 {post.content}
               </p>
 
+              {/* メディア表示エリア */}
               {post.video_url ? (
-                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black">
-                  <video src={post.video_url} controls muted loop autoPlay playsInline className="w-full h-auto block" />
+                /* 🛠️ tutorial-step-media クラスを追加 */
+                <div 
+                  onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
+                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black cursor-pointer relative group overflow-hidden tutorial-step-media"
+                >
+                  {/* 中央に表示されるカスタム再生オーバーレイ */}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                    <div className="bg-white/20 backdrop-blur-md p-3 rounded-full text-white shadow-md transform scale-95 group-hover:scale-100 transition-transform duration-200">
+                      <svg xmlns="http://www.w3.org/2000/svg" fill="currentColor" viewBox="0 0 24 24" className="w-6 h-6">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  </div>
+                  <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
                 </div>
               ) : post.image_url && (
-                <div className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50">
-                  <img src={post.image_url} alt="" className="w-full h-auto block" loading="lazy" />
+                /* 🛠️ tutorial-step-media クラスを追加 */
+                <div 
+                  onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
+                  className="mb-4 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 cursor-pointer relative group overflow-hidden tutorial-step-media"
+                >
+                  <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 flex items-center justify-center">
+                    <div className="bg-white/30 backdrop-blur-md px-3 py-1.5 rounded-full text-white text-[10px] font-bold tracking-wider opacity-0 group-hover:opacity-100 transition-all duration-200 transform translate-y-1 group-hover:translate-y-0">
+                      拡大する
+                    </div>
+                  </div>
+                  <img src={post.image_url} alt="" className="w-full h-auto block transition-transform duration-300 group-hover:scale-[1.02]" loading="lazy" />
                 </div>
               )}
 
@@ -283,15 +238,30 @@ export default function FilteredTimeline({
                         reply.authorProfile?.totalAwesomeCount ?? 
                         reply.authorProfile?.totalAwesome ?? 0;
 
+                      const replyHug = 
+                        reply.authorProfile?.total_hug ?? 
+                        reply.authorProfile?.totalHugCount ?? 
+                        reply.authorProfile?.totalHug ?? 0;
+
+                      const replyCalculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(replyAwesome)) + 1));
+
                       return (
                         <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
                           <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50" alt="" />
                           <div className="flex-1 bg-gray-50/80 p-3 rounded-2xl relative text-gray-800">
-                            {/* リプライエリアの名前の横にも同じ台座バッジをインライン結合 */}
-                            <span className="text-[11px] font-bold flex items-center mb-1" style={{ color: GOLD_COLOR }}>
-                              {reply.authorProfile?.full_name}
-                              <EmbeddedRankBadge totalAwesome={replyAwesome} />
+                            
+                            <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-1.5" style={{ color: GOLD_COLOR }}>
+                              <span className="text-gray-800">{reply.authorProfile?.full_name}</span>
+                              
+                              <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 px-1.5 py-0.2 rounded border border-amber-100/70">
+                                Lv.{replyCalculatedLevel}
+                              </span>
+
+                              <span className="text-[8px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-1.5 py-0.2 rounded-full">
+                                {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
+                              </span>
                             </span>
+
                             <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
                             <ReplyActionButtons 
                               replyId={reply.id}
@@ -310,6 +280,44 @@ export default function FilteredTimeline({
             </div>
           );
         })
+      )}
+
+      {/* 🎬 フルスクリーン・マルチメディアポップアップビューア (画像・動画両対応) */}
+      {activeMedia && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-sm transition-all duration-200 animate-in fade-in"
+          onClick={() => setActiveMedia(null)} // 背景タップで閉じる
+        >
+          {/* 閉じるボタン */}
+          <button 
+            onClick={() => setActiveMedia(null)}
+            className="absolute top-4 right-4 z-50 p-2.5 text-white/70 hover:text-white bg-white/10 hover:bg-white/20 rounded-full transition-all active:scale-95"
+          >
+            <X size={22} strokeWidth={2.5} />
+          </button>
+
+          {/* メディアコンテナ */}
+          <div 
+            className="w-full max-w-4xl max-h-[85vh] px-4 flex items-center justify-center animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()} // メディア本体のタップで閉じてしまうバグを防ぐ
+          >
+            {activeMedia.type === 'video' ? (
+              <video 
+                src={activeMedia.url} 
+                controls 
+                autoPlay 
+                playsInline
+                className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain bg-black"
+              />
+            ) : (
+              <img 
+                src={activeMedia.url} 
+                alt="" 
+                className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl border border-white/10 object-contain bg-black animate-in fade-in duration-300"
+              />
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

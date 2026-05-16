@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef, useTransition } from "react";
 import { fetchDirectMessages, sendDirectMessage } from "@/app/actions";
 import { toast } from "sonner";
-import { useRouter } from "next/navigation"; // 💡 画面遷移のために追加
+import { useRouter } from "next/navigation"; 
 
 interface Message {
   id: number;
@@ -26,7 +26,7 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
   const [input, setInput] = useState("");
   const [isPending, startTransition] = useTransition();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const router = useRouter(); // 💡 ルーターの初期化
+  const router = useRouter(); 
 
   // AI警告が出た場合のステート
   const [toxicInfo, setToxicInfo] = useState<{ isToxic: boolean; suggestions: string[] }>({
@@ -86,11 +86,15 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
 
   return (
     <div className="flex flex-col h-[600px] bg-white rounded-[2rem] border border-gray-100 overflow-hidden shadow-sm max-w-md mx-auto w-full">
-      {/* 💡 ヘッダー：左側に戻るボタン、中央にタイトルを配置 */}
+      {/* ヘッダー */}
       <div className="bg-white p-4 border-b border-gray-100 flex items-center justify-between">
         <button 
           type="button"
-          onClick={() => router.back()} // 💡 前の画面に戻る
+          // 💡 修正：Next.jsのrouterではなく、ウィンドウオブジェクトを使って強制的にページを移動させます
+          // これにより、Next.jsが裏で持っている不完全なキャッシュを強制的にすべて吹き飛ばします
+          onClick={() => {
+            window.location.href = '/messages';
+          }} 
           className="flex items-center gap-1 text-[10px] font-black transition-colors uppercase tracking-widest hover:opacity-70"
           style={{ color: GOLD_COLOR }}
         >
