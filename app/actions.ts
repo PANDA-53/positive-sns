@@ -806,19 +806,111 @@ export async function fetchChatHistoryList() {
 export async function fetchMorePosts(offset: number, limit: number = 20) {
   const supabase = await createClient();
   
-  const { data: posts, error } = await supabase
+  // 現在ログインしているユーザー情報を取得
+  const { data: { user } } = await supabase.auth.getUser();
+  const currentUserId = user?.id;
+
+  if (!currentUserId) return [];
+
+  // ---------------------------------------------------------
+  // 💡 パターン1: 先行して「フレンドのIDリスト」を最速で取得する
+  // ---------------------------------------------------------
+  const { data: friendships, error: friendError } = await supabase
+    .from('friendships')
+    .select('user_id, friend_id')
+    .eq('status', 'accepted')
+    .or(`user_id.eq.${currentUserId},friend_id.eq.${currentUserId}`);
+
+  if (friendError) {
+    console.error("フレンドリスト取得エラー:", friendError);
+    return [];
+  }
+
+  // 自分が関わっている相手のIDだけを抽出して配列にする
+  const friendIds: string[] = friendships?.map(f => 
+    f.user_id === currentUserId ? f.friend_id : f.user_id
+  ) || [];
+
+
+  // ---------------------------------------------------------
+  // 💡 フィルタリング: 事前に確定した friendIds を使ってクエリ側で絞り込む！
+  // ---------------------------------------------------------
+  // 条件: ①パブリック、②自分の投稿、③フレンド限定かつ投稿主が自分のフレンド
+  let postQuery = supabase
     .from('posts')
     .select(`*, reactions (type, user_id)`)
     .filter('parent_id', 'is', null) // 親投稿のみ
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
-  if (error) {
-    console.error("追加の投稿取得エラー:", error);
+  if (friendIds.length > 0) {
+    // フレンドが1人以上いる場合は、inクエリで結合
+    postQuery = postQuery.or(`privacy_level.eq.public, user_id.eq.${currentUserId}, and(privacy_level.eq.friends, user_id.in.(${friendIds.join(',')}))`);
+  } else {
+    // フレンドがいない場合は、パブリックか自分の投稿のみ
+    postQuery = postQuery.or(`privacy_level.eq.public, user_id.eq.${currentUserId}`);
+  }
+
+  const { data: posts, error: postsError } = await postQuery;
+
+  if (postsError || !posts) {
+    console.error("追加の投稿取得エラー:", postsError);
     return [];
   }
 
-  // ここで fetchMainTimelineData と同様に、各 post に対する authorProfile の結合や 
-  // awesomeCount, hugCount, myReaction などのマッピング（整形）処理を行って返却します
-  return posts || []; 
+  // ---------------------------------------------------------
+  // 3️⃣ プロフィール情報と全Awesome数の結合（以下は前回と同様）
+  // ---------------------------------------------------------
+  const postUserIds = posts.map(p => p.user_id);
+  const uniqueUserIds = Array.from(new Set(postUserIds)).filter(Boolean);
+
+  if (uniqueUserIds.length === 0) return [];
+
+  const { data: profiles } = await supabase
+    .from('profiles')
+    .select('id, full_name, avatar_url')
+    .in('id', uniqueUserIds);
+
+  let profileAwesomeMap = new Map<string, number>();
+  const { data: allUserPosts } = await supabase
+    .from('posts')
+    .select('id, user_id')
+    .in('user_id', uniqueUserIds);
+  
+  const allPostIds = allUserPosts?.map(p => p.id) || [];
+  const postToUserMap = new Map(allUserPosts?.map(p => [p.id, p.user_id]));
+
+  if (allPostIds.length > 0) {
+    const { data: allAwesomeReactions } = await supabase
+      .from('reactions')
+      .select('post_id')
+      .eq('type', 'awesome')
+      .in('post_id', allPostIds);
+
+    allAwesomeReactions?.forEach(r => {
+      const authorId = postToUserMap.get(r.post_id);
+      if (authorId) {
+        profileAwesomeMap.set(authorId, (profileAwesomeMap.get(authorId) || 0) + 1);
+      }
+    });
+  }
+
+  const enrichedProfiles = profiles?.map(prof => ({
+    ...prof,
+    totalAwesome: profileAwesomeMap.get(prof.id) || 0
+  })) || [];
+
+  const formattedPosts = posts.map(post => ({
+    ...post,
+    authorProfile: enrichedProfiles.find(p => p.id === post.user_id) || { 
+      full_name: '匿名', 
+      avatar_url: '', 
+      totalAwesome: 0 
+    },
+    awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
+    hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
+    myReaction: currentUserId ? (post.reactions?.find((r: any) => r.user_id === currentUserId)?.type || null) : null,
+  }));
+
+  return formattedPosts; 
 }
