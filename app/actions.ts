@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import OpenAI from 'openai';
 import webpush from 'web-push';
 
-// フロント側の型エラーを根絶するため、共通の戻り値型を定義
+// フロント側の型エラーを根逐するため、共通の戻り値型を定義
 export interface PostResult {
   isToxic: boolean;
   reason: string;
@@ -213,8 +213,17 @@ export async function fetchMainTimelineData(userId: string) {
   try {
     const supabase = await createClient();
     
+    // 💡 修正：replyToとして、reply_to_idが指す元の投稿の投稿者プロフィール(profiles)も一緒に結合取得する
     const [postsRes, friendshipsRes] = await Promise.all([
-      supabase.from('posts').select(`*, reactions (type, user_id)`).order('created_at', { ascending: false }),
+      supabase.from('posts').select(`
+        *, 
+        reactions (type, user_id),
+        replyTo:posts!reply_to_id(
+          id,
+          user_id,
+          profiles!user_id(full_name)
+        )
+      `).order('created_at', { ascending: false }),
       supabase.from('friendships').select('*').or(`user_id.eq.${userId},friend_id.eq.${userId}`)
     ]);
 
@@ -278,22 +287,24 @@ export async function fetchMainTimelineData(userId: string) {
       }))
       .filter(req => req.sender_profile);
 
-    const formattedPosts = posts.map(post => ({
+    const formattedPosts = posts.map((post: any) => ({
       ...post,
       authorProfile: enrichedProfiles.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '', totalAwesome: 0 },
       awesomeCount: post.reactions?.filter((r: any) => r.type === 'awesome').length || 0,
       hugCount: post.reactions?.filter((r: any) => r.type === 'hug').length || 0,
       myReaction: post.reactions?.find((r: any) => r.user_id === userId)?.type || null,
+      // 💡 追加：返信先のユーザー名をフロントエンドに提供する
+      replyToUser: post.replyTo?.profiles?.full_name || null
     }));
 
     return {
-  mainPosts: formattedPosts.filter(p => !p.parent_id),
-  // 💡 .reverse() を追加して、作成日時（created_at）が古いものから順（昇順）に並び替えます
-  replies: formattedPosts.filter(p => p.parent_id).reverse(), 
-  friendIds: Array.from(friendMap.keys()) as string[], 
-  pendingRequests,
-  acceptedFriends
-};
+      mainPosts: formattedPosts.filter(p => !p.parent_id),
+      // 💡 .reverse() を追加して、作成日時（created_at）が古いものから順（昇順）に並び替えます
+      replies: formattedPosts.filter(p => p.parent_id).reverse(), 
+      friendIds: Array.from(friendMap.keys()) as string[], 
+      pendingRequests,
+      acceptedFriends
+    };
   } catch (error) {
     console.error("fetchMainTimelineData Error:", error);
     return { mainPosts: [], replies: [], friendIds: [], pendingRequests: [], acceptedFriends: [] };
@@ -305,7 +316,7 @@ export async function fetchMainTimelineData(userId: string) {
  */
 export async function fetchUserProfileData(targetUserId: string, currentUserId: string): Promise<{
   profile: any;
-  user: any; // 💡 互換性のためにプロパティを追加
+  user: any; 
   mainPosts: any[];
   friendship: any;
   friendshipStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted';
@@ -360,7 +371,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
 
   return {
     profile: profileRes.data,
-    user: profileRes.data, // 💡 呼び出し側が .profile でも .user でも取れるように二重保持にして型エラーを防ぎます
+    user: profileRes.data, 
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship,
     friendshipStatus, 
@@ -377,6 +388,8 @@ export async function createPost(formData: FormData): Promise<PostResult> {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const parentId = formData.get('parent_id') ? parseInt(formData.get('parent_id') as string) : null;
+  // 💡 追加：FormDataから reply_to_id も受け取れるようにする
+  const replyToId = formData.get('reply_to_id') ? parseInt(formData.get('reply_to_id') as string) : null;
   const privacyLevel = (formData.get('privacy_level') as string) || 'public';
   const file = formData.get('media') instanceof File ? (formData.get('media') as File) : null;
   
@@ -416,7 +429,8 @@ export async function createPost(formData: FormData): Promise<PostResult> {
       privacy_level: privacyLevel,
       image_url: imageUrl,
       video_url: videoUrl,
-      parent_id: parentId 
+      parent_id: parentId,
+      reply_to_id: replyToId // 💡 テーブルへ挿入
     })
     .select()
     .single();
@@ -451,6 +465,8 @@ export async function createReply(formData: FormData): Promise<PostResult> {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const parentId = formData.get('parentId') as string; 
+  // 💡 追加：FormDataから replyToId も受け取る
+  const replyToId = formData.get('replyToId') ? parseInt(formData.get('replyToId') as string) : null;
   const file = formData.get('media') instanceof File ? (formData.get('media') as File) : null;
   
   const { data: { user } } = await supabase.auth.getUser();
@@ -492,7 +508,8 @@ export async function createReply(formData: FormData): Promise<PostResult> {
       user_id: user.id,
       privacy_level: 'public',
       image_url: imageUrl,
-      video_url: videoUrl   
+      video_url: videoUrl,
+      reply_to_id: replyToId // 💡 テーブルへ挿入
     })
     .select()
     .single();
@@ -861,9 +878,7 @@ export async function fetchMorePosts(offset: number, limit: number = 20) {
 
   let profileAwesomeMap = new Map<string, number>();
   const { data: allUserPosts } = await supabase
-    .from('posts')
-    .select('id, user_id')
-    .in('user_id', uniqueUserIds);
+    .from('posts').select('id, user_id').in('user_id', uniqueUserIds);
   
   const allPostIds = allUserPosts?.map(p => p.id) || [];
   const postToUserMap = new Map(allUserPosts?.map(p => [p.id, p.user_id]));

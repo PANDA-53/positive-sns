@@ -35,12 +35,16 @@ export default function FilteredTimeline({
   onSuccess,
   viewModeProp = 'all'
 }: FilteredTimelineProps) {
-  // 💡 初期値が undefined や null で来ても絶対に落ちないように空配列でフォールバック
+  // 初期値が undefined や null で来ても絶対に落ちないように空配列でフォールバック
   const [timelinePosts, setTimelinePosts] = useState<any[]>(Array.isArray(mainPosts) ? mainPosts : []);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
   const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
   
+  // 💡 追加：現在どのリプライに対して返信しようとしているかを保持するState
+  // 各親投稿（post.id）ごとに個別に返信先を設定・管理できるようにオブジェクトのマップ型にします
+  const [activeReplyTargets, setActiveReplyTargets] = useState<Record<number, { id: number; name: string } | null>>({});
+
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loaderRef = useRef<HTMLDivElement>(null);
@@ -215,7 +219,7 @@ export default function FilteredTimeline({
             const postReplies = (replies || []).filter((r: any) => r && r.parent_id === post.id);
             const isPostReported = !!reportedPostIds[post.id];
 
-            // 💡 ぬるぽ防止：authorProfile が null の場合でも絶対に落ちないようにフォールバックを徹底
+            // ぬるぽ防止：authorProfile が null の場合でも絶対に落ちないようにフォールバックを徹底
             const profile = post.authorProfile || {};
             const totalAwesome = profile.total_awesome ?? profile.totalAwesomeCount ?? profile.totalAwesome ?? 0;
             const totalHug = profile.total_hug ?? profile.totalHugCount ?? profile.totalHug ?? 0;
@@ -325,7 +329,7 @@ export default function FilteredTimeline({
                       {postReplies.map((reply: any) => {
                         if (!reply) return null;
                         
-                        // 💡 リプライ側の authorProfile 防御
+                        // リプライ側の authorProfile 防御
                         const rProfile = reply.authorProfile || {};
                         const replyAwesome = rProfile.total_awesome ?? rProfile.totalAwesomeCount ?? rProfile.totalAwesome ?? 0;
                         const replyHug = rProfile.total_hug ?? rProfile.totalHugCount ?? rProfile.totalHug ?? 0;
@@ -343,6 +347,14 @@ export default function FilteredTimeline({
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5" style={{ color: GOLD_COLOR }}>
                                   <span className="text-zinc-900 dark:text-zinc-100">{rFullName}</span>
+                                  
+                                  {/* 💡 追加：もしこのリプライが「特定の返信(reply_to_id)」を持っていたら誰宛てかを表示する */}
+                                  {reply.replyToUser && (
+                                    <span className="text-[10px] text-zinc-400 font-medium ml-1 flex items-center gap-0.5">
+                                      ▶︎ <span className="text-amber-600/90 dark:text-amber-500 font-bold">@{reply.replyToUser}</span>
+                                    </span>
+                                  )}
+
                                   <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-100/70 dark:border-amber-900/60">
                                     Lv.{replyCalculatedLevel}
                                   </span>
@@ -384,7 +396,7 @@ export default function FilteredTimeline({
                                 </div>
                               )}
 
-                              <div className="mt-2 pt-1 border-t border-gray-100 dark:border-zinc-800/40">
+                              <div className="mt-2 pt-1 border-t border-gray-100 dark:border-zinc-800/40 flex items-center justify-between">
                                 <ReplyActionButtons 
                                   replyId={reply.id}
                                   awesomeCount={reply.awesomeCount || 0}
@@ -392,13 +404,34 @@ export default function FilteredTimeline({
                                   initialMyReaction={reply.myReaction} 
                                   isMyComment={reply.user_id === user?.id}
                                 />
+
+                                {/* 💡 追加：「返信する」ボタン。押すとこのリプライデータをその親投稿（post.id）の返信先としてStateに記憶する */}
+                                <button
+                                  onClick={() => setActiveReplyTargets(prev => ({
+                                    ...prev,
+                                    [post.id]: { id: reply.id, name: rFullName }
+                                  }))}
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-full text-zinc-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 transition-all duration-200"
+                                >
+                                  返信する
+                                </button>
                               </div>
                             </div>
                           </div>
                         );
                       })}
                     </div>
-                    <ReplyForm parentId={post.id} onSuccess={() => { if (onSuccess) onSuccess(); }} />
+
+                    {/* 💡 修正：ReplyFormへ返信先情報とその解除処理をバインドして引き渡す */}
+                    <ReplyForm 
+                      parentId={post.id} 
+                      replyTarget={activeReplyTargets[post.id] || null}
+                      onCancelReply={() => setActiveReplyTargets(prev => ({ ...prev, [post.id]: null }))}
+                      onSuccess={() => { 
+                        setActiveReplyTargets(prev => ({ ...prev, [post.id]: null }));
+                        if (onSuccess) onSuccess(); 
+                      }} 
+                    />
                   </div>
                 )}
               </div>

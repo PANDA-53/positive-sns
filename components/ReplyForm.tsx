@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useRef, useTransition } from "react";
-import { createReply } from "@/app/actions"; // 💡 リプライ専用アクションに変更
+import { createReply } from "@/app/actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Image, Video, X } from "lucide-react"; // アイコン用（インストールされていない場合は適宜変更してください）
+import { Image, Video, X } from "lucide-react";
 
 interface PostResult {
   isToxic?: boolean;
@@ -12,9 +12,22 @@ interface PostResult {
   success?: boolean;
 }
 
+// 💡 拡張：FilteredTimeline から渡される Props の型を定義
+interface ReplyFormProps {
+  parentId: number;
+  onSuccess: () => void;
+  replyTarget?: { id: number; name: string } | null; // 誰への返信か
+  onCancelReply?: () => void; // 返信先をキャンセルする関数
+}
+
 const GOLD_COLOR = "#B8860B";
 
-export default function ReplyForm({ parentId, onSuccess }: { parentId: number; onSuccess: () => void }) {
+export default function ReplyForm({ 
+  parentId, 
+  onSuccess,
+  replyTarget = null,
+  onCancelReply
+}: ReplyFormProps) {
   const [content, setContent] = useState("");
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
@@ -32,6 +45,8 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMediaPreview(null);
     setToxicInfo({ isToxic: false, suggestions: [] });
+    // リセット時に返信ターゲットもクリア
+    if (onCancelReply) onCancelReply();
   };
 
   const handleSuggestionClick = (suggestedText: string) => {
@@ -43,7 +58,6 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 以前のプレビューURLをメモリ解放
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
 
     setMediaFile(file);
@@ -63,9 +77,14 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
 
     const formData = new FormData();
     formData.append("content", content);
-    formData.append("parentId", parentId.toString()); // 💡 actions.tsのcreateReplyは小文字始まりのparentId
+    formData.append("parentId", parentId.toString());
     if (mediaFile) {
-      formData.append("media", mediaFile); // 💡 メディアファイルを添付
+      formData.append("media", mediaFile);
+    }
+    
+    // 💡 重要：もし特定の返信に対するアンカー（replyTarget）があれば、そのIDを付与する
+    if (replyTarget) {
+      formData.append("replyToId", replyTarget.id.toString());
     }
 
     startTransition(async () => {
@@ -97,6 +116,24 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
 
   return (
     <div className="mt-2 space-y-2">
+      {/* 💡 追加：特定のユーザーへの返信中バッジ */}
+      {replyTarget && (
+        <div className="flex items-center justify-between bg-amber-50/70 dark:bg-amber-950/20 border border-amber-100/70 dark:border-amber-900/40 rounded-xl px-3 py-1.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
+          <span className="text-[11px] text-amber-800 dark:text-amber-400 font-bold flex items-center gap-1">
+            <span>@</span>
+            <span className="underline decoration-wavy decoration-amber-500/40">{replyTarget.name}</span>
+            <span className="text-zinc-400 dark:text-zinc-500 font-medium">さんに返信中</span>
+          </span>
+          <button
+            type="button"
+            onClick={onCancelReply}
+            className="p-1 rounded-full text-zinc-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+          >
+            <X size={14} strokeWidth={2.5} />
+          </button>
+        </div>
+      )}
+
       {/* 言い換え案エリア */}
       {toxicInfo.isToxic && (
         <div className="bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-zinc-900 border border-amber-100 dark:border-amber-900/40 p-3 rounded-2xl animate-in fade-in slide-in-from-top-1">
@@ -129,12 +166,13 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
                 ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50" 
                 : "bg-gray-50 dark:bg-zinc-800/50 border-transparent focus:border-gray-200 dark:focus:border-zinc-700"
             } text-black dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-500`}
-            placeholder="優しい返信を送りましょう"
+            // 💡 返信中相手の名前をプレースホルダーにも反映
+            placeholder={replyTarget ? `${replyTarget.name} さんへ優しいメッセージを...` : "優しい返信を送りましょう"}
             rows={2}
             disabled={isPending}
           />
 
-          {/* 🛠️ 入力欄左下のメディア選択ボタン */}
+          {/* 入力欄左下のメディア選択ボタン */}
           <div className="absolute left-3 bottom-3 flex items-center gap-2">
             <button
               type="button"
@@ -155,7 +193,7 @@ export default function ReplyForm({ parentId, onSuccess }: { parentId: number; o
           </div>
         </div>
 
-        {/* 🛠️ メディアプレビューエリア */}
+        {/* メディアプレビューエリア */}
         {mediaPreview && mediaFile && (
           <div className="relative inline-block max-w-[200px] rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800">
             {mediaFile.type.startsWith("video/") ? (
