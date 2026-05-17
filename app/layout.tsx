@@ -4,7 +4,6 @@ import { Toaster } from "sonner";
 import Providers from "./providers";
 import { BottomNav } from "@/components/bottom-nav"; 
 import AppTutorial from "@/components/app-tutorial"; 
-// 🛠️ 1. ユーザーID取得のために Supabase のサーバークライアントをインポート
 import { createClient } from "@/utils/supabase/server";
 
 export const metadata: Metadata = {
@@ -12,33 +11,34 @@ export const metadata: Metadata = {
   description: "心の平穏を守るSNS",
 };
 
+// 💡 ライトモード時のベース背景色
 const BEIGE_BG = "#F0EDE4";
 
-// 🛠️ 2. 関数名の前に `async` を付与して非同期処理を可能にする
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // 🛠️ 3. Supabase からログイン中のユーザー情報を取得する
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   
-  // ユーザーIDを抽出（ログインしていない場合は安全に空文字を渡す）
   const currentUserId = user?.id || '';
 
   return (
-    <html lang="ja">
-      <body className="text-black" style={{ backgroundColor: BEIGE_BG }}>
+    // 💡 1. suppressHydrationWarning を追加してテーマ切り替え時のエラーを解消！
+    <html lang="ja" suppressHydrationWarning>
+      {/* 💡 2. style固定を廃止し、Tailwindでライト時（bg-[#F0EDE4]）とダーク時（dark:bg-zinc-950）の背景色を制御 */}
+      <body className="text-black dark:text-zinc-100 bg-[#F0EDE4] dark:bg-zinc-950 min-h-screen transition-colors duration-200">
         <Providers>
           <AppTutorial />
 
           <Toaster position="top-center" />
-          <main className="min-h-screen pb-20">
+          
+          {/* 💡 3. メインコンテンツエリアの背景や文字色もダークモードに連動 */}
+          <main className="min-h-screen pb-20 bg-[#F0EDE4] dark:bg-zinc-950 text-black dark:text-zinc-100 transition-colors duration-200">
             {children}
           </main>
 
-          {/* 🛠️ 4. 取得した currentUserId を BottomNav に注入する */}
           <BottomNav currentUserId={currentUserId} />
         </Providers>
       </body>

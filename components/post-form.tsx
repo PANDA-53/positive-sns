@@ -108,7 +108,7 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
   return (
     <div className="space-y-3">
       {toxicInfo.isToxic && (
-        <div className="bg-gradient-to-br from-amber-50 to-white border-2 border-amber-100 p-4 rounded-[1.2rem] shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
+        <div className="bg-gradient-to-br from-amber-50 to-white dark:from-zinc-900 dark:to-zinc-950 border-2 border-amber-100 dark:border-amber-900/40 p-4 rounded-[1.2rem] shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-300">
           <p className="text-[10px] font-black uppercase tracking-widest mb-3 flex items-center gap-2" style={{ color: GOLD_COLOR }}>
             <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
             {isReply 
@@ -121,7 +121,7 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
                 key={i}
                 type="button"
                 onClick={() => handleSuggestionClick(text)}
-                className="text-left text-[11px] font-bold bg-white hover:bg-amber-50 border border-amber-100 p-3 rounded-xl transition-all active:scale-95 text-gray-700 shadow-sm"
+                className="text-left text-[11px] font-bold bg-white dark:bg-zinc-800 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-amber-100 dark:border-amber-900/30 p-3 rounded-xl transition-all active:scale-95 text-gray-700 dark:text-zinc-300 shadow-sm"
               >
                 {text}
               </button>
@@ -130,19 +130,21 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
         </div>
       )}
 
+      {/* 💡 修正箇所1: フォーム全体の背景色をダークモードに対応（dark:bg-zinc-900、境界線も調整） */}
       <form
         onSubmit={handleSubmit}
-        className={`${isReply ? "bg-gray-50/50" : "bg-white"} p-4 rounded-[2rem] shadow-sm border transition-all ${
-          toxicInfo.isToxic ? "border-amber-300 ring-2 ring-amber-100" : "border-gray-100"
+        className={`${isReply ? "bg-gray-50/50 dark:bg-zinc-900/40" : "bg-white dark:bg-zinc-900"} p-4 rounded-[2rem] shadow-sm border transition-all duration-200 ${
+          toxicInfo.isToxic ? "border-amber-300 ring-2 ring-amber-100 dark:ring-amber-950/20" : "border-gray-100 dark:border-zinc-800/80"
         } ${isPending ? "opacity-70 pointer-events-none" : ""}`}
       >
+        {/* 💡 修正箇所2: テキストエリア内の文字色（dark:text-zinc-100）と入力エリア背景色（dark:bg-zinc-950/50）を調整 */}
         <textarea
           name="content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
           placeholder={isReply ? "優しい返信を送りましょう" : "最近あった、いいことは？"}
-          className={`w-full p-4 rounded-2xl outline-none border-none resize-none transition-all text-base text-gray-800 placeholder-gray-400 font-medium ${
-            toxicInfo.isToxic ? "bg-amber-50/50" : "bg-gray-50/60"
+          className={`w-full p-4 rounded-2xl outline-none border-none resize-none transition-all duration-200 text-base text-gray-800 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 font-medium ${
+            toxicInfo.isToxic ? "bg-amber-50/50 dark:bg-amber-950/20" : "bg-gray-50/60 dark:bg-zinc-950/50"
           }`}
           rows={isReply ? 2 : 1}
           required
@@ -167,7 +169,8 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
 
         <div className="flex flex-row justify-between items-center gap-3 mt-4">
           <div className="flex items-center gap-3">
-            <label className="cursor-pointer p-2.5 bg-gray-50 hover:bg-gray-100 rounded-xl transition-all flex items-center shadow-sm border border-gray-100">
+            {/* 💡 修正箇所3: 画像アップロードボタンの背景・境界線をダーク対応 */}
+            <label className="cursor-pointer p-2.5 bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-xl transition-all flex items-center shadow-sm border border-gray-100 dark:border-zinc-700/60">
               <ImageIcon size={18} strokeWidth={2} style={{ color: GOLD_COLOR }} />
               <input
                 ref={fileInputRef}
@@ -187,19 +190,20 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
 
             {!isReply && (
               <div className="flex items-center gap-2">
+                {/* 💡 修正箇所4: 公開範囲トグルの背景スイッチをダーク対応（dark:bg-zinc-800） */}
                 <div
                   onClick={() => setPrivacyLevel((prev) => (prev === "public" ? "friends" : "public"))}
-                  className="relative w-14 h-8 bg-gray-100 rounded-full p-1 cursor-pointer select-none border border-gray-200/50 shadow-inner transition-colors overflow-hidden"
+                  className="relative w-14 h-8 bg-gray-100 dark:bg-zinc-800 rounded-full p-1 cursor-pointer select-none border border-gray-200/50 dark:border-zinc-700/50 shadow-inner transition-colors overflow-hidden"
                 >
                   <div
                     className={`absolute top-1 bottom-1 w-6 rounded-full shadow-md transition-all duration-300 flex items-center justify-center ${
-                      privacyLevel === "public" ? "left-1 bg-white" : "left-[28px] bg-white"
+                      privacyLevel === "public" ? "left-1 bg-white dark:bg-zinc-900" : "left-[28px] bg-white dark:bg-zinc-900"
                     }`}
                   >
                     {privacyLevel === "public" ? (
                       <Globe size={13} strokeWidth={2.5} style={{ color: GOLD_COLOR }} />
                     ) : (
-                      <Lock size={13} strokeWidth={2.5} className="text-gray-400" />
+                      <Lock size={13} strokeWidth={2.5} className="text-gray-400 dark:text-zinc-500" />
                     )}
                   </div>
                 </div>

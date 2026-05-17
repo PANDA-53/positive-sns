@@ -28,13 +28,11 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const router = useRouter(); 
 
-  // AI警告が出た場合のステート
   const [toxicInfo, setToxicInfo] = useState<{ isToxic: boolean; suggestions: string[] }>({
     isToxic: false,
     suggestions: [],
   });
 
-  // メッセージ履歴の取得
   const loadMessages = async () => {
     const data = await fetchDirectMessages(targetUserId);
     setMessages(data as Message[]);
@@ -46,7 +44,6 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
     return () => clearInterval(interval);
   }, [targetUserId]);
 
-  // メッセージ追加時に最下部へスクロール
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -85,9 +82,12 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
   };
 
   return (
-    <div className="flex flex-col h-[600px] bg-white rounded-[2rem] border border-gray-100 overflow-hidden shadow-sm max-w-md mx-auto w-full">
+    /* 💡 修正箇所1: ルートコンテナの bg-white と境界線をダーク対応 */
+    <div className="flex flex-col h-[600px] bg-white dark:bg-zinc-900 rounded-[2rem] border border-gray-100 dark:border-zinc-800 overflow-hidden shadow-sm max-w-md mx-auto w-full transition-colors duration-200">
+      
       {/* ヘッダー */}
-      <div className="bg-white p-4 border-b border-gray-100 flex items-center justify-between">
+      {/* 💡 修正箇所2: ヘッダーの背景・境界線・テキスト色をダーク対応 */}
+      <div className="bg-white dark:bg-zinc-900 p-4 border-b border-gray-100 dark:border-zinc-800 flex items-center justify-between transition-colors duration-200">
         <button 
           type="button"
           onClick={() => {
@@ -102,7 +102,7 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
           <span>BACK</span>
         </button>
 
-        <h2 className="font-bold text-gray-800 text-sm">{targetUserName} さんとのトーク</h2>
+        <h2 className="font-bold text-gray-800 dark:text-zinc-200 text-sm transition-colors duration-200">{targetUserName} さんとのトーク</h2>
         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: GOLD_COLOR }} />
       </div>
 
@@ -112,20 +112,25 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
           const isMe = msg.sender_id === currentUserId;
           return (
             <div key={msg.id} className={`flex ${isMe ? "justify-end" : "justify-start"}`}>
+              {/* 💡 修正箇所3: チャットバブル（自分/相手）の文字色とダーク時の背景、境界線を最適化 */}
               <div
-                className={`max-w-[75%] p-3 rounded-2xl text-[14px] leading-relaxed shadow-sm text-gray-800 ${
-                  isMe
-                    ? "rounded-tr-none text-right" 
-                    : "bg-gray-50 rounded-tl-none border border-gray-100" 
-                }`}
-                style={
-                  isMe 
-                    ? { backgroundColor: '#F9F6E5', borderColor: '#B8860B33', borderWidth: '1px' } 
-                    : {}
-                }
-              >
+  className={`max-w-[75%] p-3 rounded-2xl text-[14px] leading-relaxed shadow-sm text-gray-800 dark:text-zinc-100 transition-colors duration-200 ${
+    isMe
+      ? "rounded-tr-none text-right dark:bg-zinc-800" 
+      : "bg-gray-50 dark:bg-zinc-950 rounded-tl-none border border-gray-100 dark:border-zinc-800/60" 
+  }`}
+  style={
+    isMe 
+      ? {
+          backgroundColor: typeof window !== 'undefined' && document.documentElement.classList.contains('dark') ? undefined : '#F9F6E5',
+          borderColor: typeof window !== 'undefined' && document.documentElement.classList.contains('dark') ? '#3f3f46' : '#B8860B33',
+          borderWidth: '1px'
+        }
+      : {}
+  }
+>
                 <p className="break-all text-left">{msg.message}</p>
-                <span className="text-[9px] block text-right mt-1 opacity-50 text-gray-500">
+                <span className="text-[9px] block text-right mt-1 opacity-50 text-gray-500 dark:text-zinc-400">
                   {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
@@ -137,8 +142,9 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
 
       {/* AI言い換え案エリア */}
       {toxicInfo.isToxic && (
-        <div className="p-3 bg-gradient-to-br from-amber-50 to-white border-t border-amber-100 space-y-2 animate-in fade-in">
-          <p className="text-[10px] font-bold text-amber-800 flex items-center gap-2">
+        /* 💡 修正箇所4: 言い換えエリアのグラデーション、枠線をダーク対応。提案ボタンもダーク時はzinc-800ベースに */
+        <div className="p-3 bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-zinc-900 border-t border-amber-100 dark:border-amber-900/40 space-y-2 animate-in fade-in transition-all duration-200">
+          <p className="text-[10px] font-bold text-amber-800 dark:text-amber-400 flex items-center gap-2">
             <span className="w-1 h-1 bg-amber-500 rounded-full animate-pulse" />
             メッセージを少し整えてみませんか？
           </p>
@@ -148,7 +154,7 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
                 key={i}
                 type="button"
                 onClick={() => handleSuggestionClick(text)}
-                className="text-left text-[11px] bg-white hover:bg-amber-50 border border-amber-100 p-2 rounded-xl transition-all text-gray-700 shadow-sm"
+                className="text-left text-[11px] bg-white dark:bg-zinc-800 hover:bg-amber-50 dark:hover:bg-amber-950/30 border border-amber-100 dark:border-zinc-700/60 p-2 rounded-xl text-gray-700 dark:text-zinc-200 shadow-sm transition-all duration-150"
               >
                 {text}
               </button>
@@ -158,13 +164,13 @@ export default function ChatRoom({ currentUserId, targetUserId, targetUserName }
       )}
 
       {/* 入力フォーム */}
-      <form onSubmit={handleSend} className="p-4 bg-white border-t border-gray-100">
-        {/* 💡 text-sm から text-base(16px) に変更して自動ズームを防御。合わせてパディングを p-3 → p-2.5 に微調整してスッキリさせています */}
+      {/* 💡 修正箇所5: フォームフッターおよびtextareaの背景・テキスト色をダーク対応 */}
+      <form onSubmit={handleSend} className="p-4 bg-white dark:bg-zinc-900 border-t border-gray-100 dark:border-zinc-800 transition-colors duration-200">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="メッセージを入力..."
-          className="w-full p-2.5 bg-gray-50 rounded-xl text-base border-none outline-none resize-none text-gray-800 placeholder-gray-400 font-medium"
+          className="w-full p-2.5 bg-gray-50 dark:bg-zinc-950 rounded-xl text-base border-none outline-none resize-none text-gray-800 dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-600 font-medium transition-colors duration-200"
           rows={2}
           required
         />

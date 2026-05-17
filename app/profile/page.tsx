@@ -26,7 +26,7 @@ async function ProfileContent({ userId }: { userId: string }) {
   )
 }
 
-// --- メメインのページコンポーネント ---
+// --- メインのページコンポーネント ---
 export default async function ProfilePage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -34,9 +34,12 @@ export default async function ProfilePage() {
   if (!user) redirect('/login')
 
   return (
-    <main className="min-h-screen bg-[#F2F2F2] font-sans text-black pb-12">
+    /* 💡 修正箇所1: 全体背景を dark:bg-zinc-950、文字色を dark:text-zinc-100 に変更 */
+    <main className="min-h-screen bg-[#F2F2F2] dark:bg-zinc-950 font-sans text-black dark:text-zinc-100 pb-12 transition-colors duration-200">
+      
       {/* ナビゲーションバー：文字とアイコンを金色に */}
-      <nav className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200 mb-4">
+      {/* 💡 修正箇所2: ナビゲーションバーの背景、ぼかし、境界線をダーク対応 */}
+      <nav className="sticky top-0 z-10 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md border-b border-gray-200 dark:border-zinc-800 mb-4 transition-colors duration-200">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center">
           <Link 
             href="/" 
@@ -61,12 +64,13 @@ export default async function ProfilePage() {
       <div className="max-w-2xl mx-auto px-4">
         <Suspense fallback={
           /* スケルトンも少し高級感のある色味に */
-          <div className="animate-pulse p-6 bg-white rounded-[1.5rem] shadow-sm border border-gray-100 max-w-2xl mx-auto mt-4">
-            <div className="w-20 h-20 bg-gray-100 rounded-full mx-auto mb-4 border-2 border-gray-50"></div>
-            <div className="h-4 bg-gray-100 rounded-xl w-1/3 mx-auto mb-6"></div>
+          /* 💡 修正箇所3: データ読み込み中のスケルトンカード（背景・枠・パルス要素）をすべてダーク対応 */
+          <div className="animate-pulse p-6 bg-white dark:bg-zinc-900 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-zinc-800 max-w-2xl mx-auto mt-4 transition-colors duration-200">
+            <div className="w-20 h-20 bg-gray-100 dark:bg-zinc-800 rounded-full mx-auto mb-4 border-2 border-gray-50 dark:border-zinc-700"></div>
+            <div className="h-4 bg-gray-100 dark:bg-zinc-800 rounded-xl w-1/3 mx-auto mb-6"></div>
             <div className="space-y-4">
-              <div className="h-10 bg-gray-50 rounded-xl w-full"></div>
-              <div className="h-24 bg-gray-50 rounded-xl w-full"></div>
+              <div className="h-10 bg-gray-50 dark:bg-zinc-950 rounded-xl w-full"></div>
+              <div className="h-24 bg-gray-50 dark:bg-zinc-950 rounded-xl w-full"></div>
             </div>
           </div>
         }>

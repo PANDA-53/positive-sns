@@ -87,7 +87,7 @@ export default function FilteredTimeline({
     );
   }
 
-  // 表示可能な投稿をフィルタリング（管理するステートをtimelinePostsに変更）
+  // 表示可能な投稿をフィルタリング
   const visiblePosts = timelinePosts.filter((post: any) => {
     if (!post) return false;
     const hasPermission = 
@@ -158,24 +158,25 @@ export default function FilteredTimeline({
           const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
 
           return (
-            <div key={`timeline-item-${post.id}`} className="bg-white rounded-[1.5rem] shadow-sm border border-gray-100 p-5 relative">
+            /* 💡 修正箇所: 構文エラーになっていたコメントアウトを除去し、確実にダークモードで黒くなるよう dark:bg-zinc-900 / dark:border-zinc-800 を指定 */
+            <div key={`timeline-item-${post.id}`} className="bg-white dark:bg-zinc-900 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-zinc-800 p-5 relative transition-colors duration-200">
               {/* ヘッダーエリア */}
               <div className="flex items-center justify-between mb-3">
                 <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
-                  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50" alt="" />
+                  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50 dark:border-zinc-800" alt="" />
                   <div className="flex flex-col">
-                    <span className="text-[13px] font-bold text-gray-800 flex items-center flex-wrap gap-x-1.5 gap-y-1">
+                    <span className="text-[13px] font-bold text-gray-800 dark:text-zinc-100 flex items-center flex-wrap gap-x-1.5 gap-y-1 transition-colors duration-200">
                       {post.authorProfile?.full_name}
-                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 px-1.5 py-0.5 rounded border border-amber-100/70 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
+                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-100/70 dark:border-amber-900/60 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
                         Lv.{calculatedLevel}
                       </span>
-                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 border border-rose-100/60 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
+                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-100/60 dark:border-rose-900/40 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
                         {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
                       </span>
                     </span>
 
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[9px] text-gray-400 font-bold">
+                      <span className="text-[9px] text-gray-400 dark:text-zinc-500 font-bold transition-colors duration-200">
                         {new Date(post.created_at).toLocaleDateString('ja-JP', {
                           year: 'numeric',
                           month: 'numeric',
@@ -184,7 +185,7 @@ export default function FilteredTimeline({
                           minute: '2-digit'
                         })}
                       </span>
-                      <span className="opacity-80" style={{ color: GOLD_COLOR }}>
+                      <span className="opacity-80 transition-colors duration-200" style={{ color: GOLD_COLOR }}>
                         {post.privacy_level === 'public' ? <Globe size={13} strokeWidth={2.5} /> : <Lock size={13} strokeWidth={2.5} />}
                       </span>
                     </div>
@@ -192,14 +193,14 @@ export default function FilteredTimeline({
                 </Link>
                 
                 {post.user_id === user?.id ? (
-                  <button onClick={() => handleDelete(post.id)} className="p-2 text-gray-300 hover:text-rose-400 transition-colors">
+                  <button onClick={() => handleDelete(post.id)} className="p-2 text-gray-300 dark:text-zinc-600 hover:text-rose-400 dark:hover:text-rose-400 transition-colors duration-200">
                     <Trash2 size={18} strokeWidth={2} />
                   </button>
                 ) : (
                   <button 
                     onClick={() => handleReportPost(post.id)} 
                     disabled={isPostReported}
-                    className={`flex items-center gap-1 p-2 text-[10px] font-bold transition-all active:scale-95 ${isPostReported ? 'text-gray-200 cursor-not-allowed' : 'text-gray-300 hover:text-rose-400'}`}
+                    className={`flex items-center gap-1 p-2 text-[10px] font-bold transition-all active:scale-95 duration-200 ${isPostReported ? 'text-zinc-700 cursor-not-allowed' : 'text-gray-300 dark:text-zinc-600 hover:text-rose-400 dark:hover:text-rose-400'}`}
                   >
                     <AlertTriangle size={14} strokeWidth={2.5} />
                     <span>{isPostReported ? '報告済み' : '報告する'}</span>
@@ -208,7 +209,7 @@ export default function FilteredTimeline({
               </div>
 
               {/* 投稿本文 */}
-              <p className="text-[15px] text-gray-800 mb-0 whitespace-pre-wrap leading-snug px-1">
+              <p className="text-[15px] text-zinc-900 dark:text-zinc-100 mb-0 whitespace-pre-wrap leading-snug px-1 transition-colors duration-200">
                 {post.content}
               </p>
 
@@ -216,21 +217,21 @@ export default function FilteredTimeline({
               {post.video_url ? (
                 <div 
                   onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
-                  className="mt-2 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-black cursor-pointer relative group tutorial-step-media"
+                  className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-black cursor-pointer relative group tutorial-step-media transition-colors duration-200"
                 >
                   <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
                 </div>
               ) : post.image_url && (
                 <div 
                   onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
-                  className="mt-2 rounded-xl overflow-hidden border border-gray-100 shadow-sm bg-gray-50 cursor-pointer relative group tutorial-step-media"
+                  className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-gray-50 dark:bg-zinc-900/50 cursor-pointer relative group tutorial-step-media transition-colors duration-200"
                 >
                   <img src={post.image_url} alt="" className="w-full h-auto block" loading="lazy" />
                 </div>
               )}
 
               {/* ボタン＆アクションエリア */}
-              <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100">
+              <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100 dark:border-zinc-800/80 transition-colors duration-200">
                 <div className="flex items-center">
                   <ReactionButtons 
                     postId={post.id} 
@@ -243,7 +244,7 @@ export default function FilteredTimeline({
                 
                 <button 
                   onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} 
-                  className="flex items-center gap-2 text-gray-400 hover:text-amber-600 transition-colors"
+                  className="flex items-center gap-2 text-gray-400 dark:text-zinc-600 hover:text-amber-600 dark:hover:text-amber-500 transition-colors duration-200"
                   style={isCommentOpen ? { color: GOLD_COLOR } : {}}
                 >
                   <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? GOLD_COLOR : "none"} />
@@ -253,7 +254,7 @@ export default function FilteredTimeline({
 
               {/* リプライエリア */}
               {isCommentOpen && (
-                <div className="mt-4 pt-4 border-t border-gray-100 animate-in fade-in slide-in-from-top-2">
+                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-zinc-800/80 animate-in fade-in slide-in-from-top-2 transition-colors duration-200">
                   <div className="space-y-3 mb-6">
                     {postReplies.map((reply: any) => {
                       const replyAwesome = 
@@ -270,14 +271,14 @@ export default function FilteredTimeline({
 
                       return (
                         <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
-                          <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50" alt="" />
-                          <div className="flex-1 bg-gray-50/80 p-3 rounded-2xl relative text-gray-800">
+                          <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50 dark:border-zinc-800 transition-colors duration-200" alt="" />
+                          <div className="flex-1 bg-gray-50/80 dark:bg-zinc-900/60 p-3 rounded-2xl relative text-zinc-900 dark:text-zinc-100 transition-colors duration-200 border border-transparent dark:border-zinc-800/40">
                             <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-1.5" style={{ color: GOLD_COLOR }}>
-                              <span className="text-gray-800">{reply.authorProfile?.full_name}</span>
-                              <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 px-1.5 py-0.2 rounded border border-amber-100/70">
+                              <span className="text-zinc-900 dark:text-zinc-100">{reply.authorProfile?.full_name}</span>
+                              <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-100/70 dark:border-amber-900/60">
                                 Lv.{replyCalculatedLevel}
                               </span>
-                              <span className="text-[8px] font-bold text-rose-500 bg-rose-50 border border-rose-100 px-1.5 py-0.2 rounded-full">
+                              <span className="text-[8px] font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 px-1.5 py-0.2 rounded-full">
                                 {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
                               </span>
                             </span>

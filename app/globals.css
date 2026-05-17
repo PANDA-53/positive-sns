@@ -13,11 +13,27 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* 💡 スマホのシステム設定（自動）だけでなく、アプリ内の「dark」クラス（手動ボタン）にも連動するようにします */
+@variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #F0EDE4; 
+  --foreground: #171717;
+  --card-bg: #ffffff; /* 💡 追加：ライトモード時のカードの白 */
+}
+
+/* 💡 システムがダークモード、またはHTMLに .dark クラスがついた時に作動 */
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --card-bg: #121212; /* 💡 追加：ダークモード時のカードの黒 */
   }
+}
+.dark:root, [data-theme="dark"]:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card-bg: #121212;
 }
 
 /* PWAでスワイプ更新（Pull-to-Refresh）を確実に動かすための設定

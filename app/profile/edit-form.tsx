@@ -61,13 +61,14 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
   };
 
   return (
-    <div className="bg-[#FAF9F6] p-5 rounded-[1.5rem] border border-[#B8860B]/10 space-y-3 mt-4 shadow-sm">
+    /* 💡 修正箇所1: 通知ブロックの背景・ボーダーをダークモードに対応 */
+    <div className="bg-[#FAF9F6] dark:bg-zinc-950 p-5 rounded-[1.5rem] border border-[#B8860B]/10 dark:border-zinc-800 space-y-3 mt-4 shadow-sm transition-colors duration-200">
       <div className="flex items-center justify-between px-1">
         <div>
           <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: GOLD_COLOR }}>Push Notification</p>
-          <p className="text-[11px] text-gray-500 font-bold">リアクションや返信をリアルタイムで通知</p>
+          <p className="text-[11px] text-gray-500 dark:text-zinc-400 font-bold transition-colors duration-200">リアクションや返信をリアルタイムで通知</p>
         </div>
-        <div className={`w-2 h-2 rounded-full ${hasSubscription ? 'animate-pulse' : 'bg-gray-300'}`} style={hasSubscription ? { backgroundColor: GOLD_COLOR } : {}} />
+        <div className={`w-2 h-2 rounded-full ${hasSubscription ? 'animate-pulse' : 'bg-gray-300 dark:bg-zinc-700'}`} style={hasSubscription ? { backgroundColor: GOLD_COLOR } : {}} />
       </div>
 
       <button
@@ -76,7 +77,7 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
         disabled={isSubscribing || hasSubscription}
         className={`w-full py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${
           hasSubscription 
-          ? "bg-white text-gray-400 border border-gray-100 cursor-default" 
+          ? "bg-white dark:bg-zinc-900 text-gray-400 dark:text-zinc-500 border border-gray-100 dark:border-zinc-800 cursor-default" 
           : "text-white shadow-md shadow-[#B8860B]/20"
         }`}
         style={!hasSubscription && !isSubscribing ? { backgroundColor: GOLD_COLOR } : {}}
@@ -149,14 +150,16 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
   }
 
   return (
-    <main className="min-h-screen pb-12 font-sans pt-6">
+    /* 💡 修正箇所2: 画面全体の背景を dark:bg-zinc-950 に */
+    <main className="min-h-screen bg-[#F2F2F2] dark:bg-zinc-950 pb-12 font-sans pt-6 transition-colors duration-200">
       <div className="max-w-2xl mx-auto px-4">
-        <section className="bg-white p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#E2DED0]">
+        {/* 💡 修正箇所3: フォームを包むセクションカードを dark:bg-zinc-900 / dark:border-zinc-800 に */}
+        <section className="bg-white dark:bg-zinc-900 p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#E2DED0] dark:border-zinc-800 transition-colors duration-200">
           <form onSubmit={handleSubmit} className="space-y-8">
             
             {/* アバター画像設定エリア */}
             <div className="flex flex-col items-center gap-4">
-              <div className="w-24 h-24 rounded-full overflow-hidden border-4 shadow-md bg-[#FDFCF9]" style={{ borderColor: GOLD_COLOR }}>
+              <div className="w-24 h-24 rounded-full overflow-hidden border-4 shadow-md bg-[#FDFCF9] dark:bg-zinc-800" style={{ borderColor: GOLD_COLOR }}>
                 <img 
                   src={previewUrl || defaultAvatar} 
                   className="w-full h-full object-cover" 
@@ -164,8 +167,9 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
                 />
               </div>
               <label 
-                className="cursor-pointer px-6 py-2 rounded-full text-[10px] font-black border transition-all uppercase tracking-widest active:scale-95 shadow-sm"
-                style={{ backgroundColor: '#F9F6E5', color: GOLD_COLOR, borderColor: '#B8860B33' }}
+                /* 💡 修正箇所4: 「写真を変更」ボタンの背景・枠をダークモード時は少しトーンダウン */
+                className="cursor-pointer px-6 py-2 rounded-full text-[10px] font-black border transition-all uppercase tracking-widest active:scale-95 shadow-sm bg-[#F9F6E5] dark:bg-zinc-800 dark:border-zinc-700/60"
+                style={{ color: GOLD_COLOR }}
               >
                 {isCompressing ? "最適化中..." : "写真を変更"}
                 <input 
@@ -183,23 +187,23 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
             <div className="space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>User Name</label>
-                {/* 💡 text-sm から text-base(16px) に変更してズームを防止 */}
+                {/* 💡 修正箇所5: 入力フィールドの背景をダーク時は深めの黒に、文字色を白に変更 */}
                 <input 
                   name="fullName" 
                   type="text" 
                   defaultValue={initialProfile?.full_name || ''} 
-                  className="w-full p-3.5 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all text-base font-bold shadow-inner" 
+                  className="w-full p-3.5 bg-[#FDFCF9] dark:bg-zinc-950 rounded-2xl outline-none text-black dark:text-zinc-100 border border-[#E2DED0]/50 dark:border-zinc-800 focus:ring-2 focus:ring-[#B8860B]/10 dark:focus:ring-[#B8860B]/20 transition-all text-base font-bold shadow-inner" 
                   required 
                 />
               </div>
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>Bio</label>
-                {/* 💡 こちらも text-base(16px) に変更 */}
+                {/* 💡 修正箇所6: textarea も同様にダーク背景・白文字に対応 */}
                 <textarea 
                   name="bio" 
                   defaultValue={initialProfile?.bio || ''} 
-                  className="w-full p-3.5 bg-[#FDFCF9] rounded-2xl outline-none text-black border border-[#E2DED0]/50 focus:ring-2 focus:ring-[#B8860B]/10 transition-all min-h-[120px] resize-none text-base leading-relaxed shadow-inner"
+                  className="w-full p-3.5 bg-[#FDFCF9] dark:bg-zinc-950 rounded-2xl outline-none text-black dark:text-zinc-100 border border-[#E2DED0]/50 dark:border-zinc-800 focus:ring-2 focus:ring-[#B8860B]/10 dark:focus:ring-[#B8860B]/20 transition-all min-h-[120px] resize-none text-base leading-relaxed shadow-inner"
                 />
               </div>
 
@@ -215,15 +219,16 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
               <button 
                 type="submit" 
                 disabled={isCompressing}
-                className="w-full text-white font-black py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-all text-[11px] uppercase tracking-[0.2em] disabled:bg-gray-400"
+                className="w-full text-white font-black py-4 rounded-2xl shadow-lg active:scale-[0.98] transition-all text-[11px] uppercase tracking-[0.2em] disabled:bg-gray-400 dark:disabled:bg-zinc-700"
                 style={!isCompressing ? { backgroundColor: GOLD_COLOR } : {}}
               >
                 {isCompressing ? "保存中..." : "Save Changes"}
               </button>
               
               <Link 
+                /* 💡 修正箇所7: キャンセルボタンの背景とホバー、文字色をダーク対応 */
                 href={userPagePath}
-                className="w-full bg-[#F5F5F0] text-gray-400 font-black py-4 rounded-2xl text-center block text-[11px] uppercase tracking-[0.2em] active:scale-[0.98] transition-all hover:bg-[#EBEBE0]"
+                className="w-full bg-[#F5F5F0] dark:bg-zinc-800 text-gray-400 dark:text-zinc-500 font-black py-4 rounded-2xl text-center block text-[11px] uppercase tracking-[0.2em] active:scale-[0.98] transition-all hover:bg-[#EBEBE0] dark:hover:bg-zinc-700/80"
               >
                 Cancel
               </Link>
