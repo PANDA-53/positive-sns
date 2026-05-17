@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Heart, MessageCircle, Mail, BellOff } from "lucide-react";
 
+export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const GOLD_COLOR = "#B8860B";
@@ -14,46 +15,74 @@ export default async function NotificationsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return redirect("/login");
 
-  // 🛠️ 修正箇所：外部キーのカラム名ではなく、リレーションエイリアス(notifier:profiles!notifier_id)を明示的に指定して、データを綺麗にマッピングします
-  const { data: notifications, error } = await supabase
-  .from("notifications")
-  .select(`
-    *,
-    notifier:profiles!notifier_id(full_name, avatar_url)
-  `)
-  .eq("user_id", user.id)
-  .order("created_at", { ascending: false });
+  // 1. 自分宛ての通知を最大20件取得
+  const { data: rawNotifications, error: fetchError } = await supabase
+    .from("notifications")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false })
+    .limit(20);
 
-  // 既読フラグの更新
-  if (notifications && notifications.length > 0) {
-    await supabase
-      .from("notifications")
-      .update({ is_read: true })
-      .eq("user_id", user.id)
-      .eq("is_read", false);
+  if (fetchError) {
+    console.error("通知の取得に失敗しました:", fetchError.message);
+  }
+
+  let notificationsWithProfiles = [];
+
+  if (rawNotifications && rawNotifications.length > 0) {
+    const notifierIds = rawNotifications.map(n => n.notifier_id).filter(Boolean);
+
+    if (notifierIds.length > 0) {
+      // 💡 修正箇所：エラーの原因になっていた total_awesome を select から完全に排除しました
+      const { data: profiles, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, full_name, avatar_url")
+        .in("id", notifierIds);
+
+      if (profileError) {
+        console.error("プロフィール取得エラー:", profileError.message);
+      }
+
+      // プロフィールを素直にマッピング結合
+      notificationsWithProfiles = rawNotifications.map(n => {
+        const foundProfile = profiles?.find(p => p.id === n.notifier_id) || null;
+        return {
+          ...n,
+          notifier: foundProfile
+        };
+      });
+    } else {
+      notificationsWithProfiles = rawNotifications.map(n => ({ ...n, notifier: null }));
+    }
+
+    // 3. 未読を既読に更新
+    const unreadIds = rawNotifications.filter(n => !n.is_read).map(n => n.id);
+    if (unreadIds.length > 0) {
+      await supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .in("id", unreadIds);
+    }
   }
 
   return (
-    /* 💡 最背面は他ページと同じく、最も深い `dark:bg-zinc-950` */
     <main className="min-h-screen bg-[#F2F2F2] dark:bg-zinc-950 text-black dark:text-zinc-100 pb-24 transition-colors duration-200">
       <div className="max-w-md mx-auto px-4 pt-6">
         
-        {/* タイムラインと世界観を合わせたヘッダー */}
+        {/* ヘッダーエリア */}
         <div className="flex items-center justify-between mb-5 px-1">
           <div className="flex flex-col">
             <h1 className="text-xl font-black text-gray-800 dark:text-zinc-100 tracking-tight">通知</h1>
             <p className="text-[10px] text-gray-400 dark:text-zinc-500 font-bold uppercase tracking-widest mt-0.5">Your Peace & Connections</p>
           </div>
-          {/* 最背面が zinc-950 なので、バッジはカードと同じく `dark:bg-zinc-900` で浮かせる */}
           <span className="text-xs font-black px-3 py-1 rounded-full bg-white dark:bg-zinc-900 border border-gray-100 dark:border-zinc-800 shadow-sm text-gray-500" style={{ color: GOLD_COLOR }}>
-             {notifications?.length || 0}
+             {notificationsWithProfiles.length}
           </span>
         </div>
 
         {/* 通知リストエリア */}
         <div className="space-y-4">
-          {!notifications || notifications.length === 0 ? (
-            /* 空状態（未通知）カードの背景：`dark:bg-zinc-900` */
+          {notificationsWithProfiles.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-24 px-6 bg-white dark:bg-zinc-900 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-zinc-800/80">
               <div className="w-12 h-12 rounded-full bg-gray-50 dark:bg-zinc-950 flex items-center justify-center text-gray-300 dark:text-zinc-700 mb-3">
                 <BellOff size={20} strokeWidth={2} />
@@ -64,24 +93,18 @@ export default async function NotificationsPage() {
               </p>
             </div>
           ) : (
-            notifications.map((notification) => {
-              // 💡 クエリの修正により、notification.notifier からプロファイルが確実に参照できるようになります
-              const notifierName = notification.notifier?.full_name || "誰か";
-              const avatarUrl = notification.notifier?.avatar_url || defaultAvatar;
+            notificationsWithProfiles.map((notification, idx) => {
+              const notifierObj = notification.notifier || {};
+              
+              // 💡 DBから正しく取得した full_name を反映（空なら匿名のユーザー）
+              const notifierName = notifierObj.full_name || "匿名のユーザー";
+              const avatarUrl = notifierObj.avatar_url || defaultAvatar;
 
-              const totalAwesome = 
-                notification.notifier?.total_awesome ?? 
-                notification.notifier?.totalAwesomeCount ?? 0;
+              // 💡 レベル表示用のAwesome数は、今回は仮で固定値1（または他のロジック）にしてエラーを回避
+              const calculatedLevel = 1;
 
-              const totalHug = 
-                notification.notifier?.total_hug ?? 
-                notification.notifier?.totalHugCount ?? 0;
-
-              const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
-
-              // 通知種別ごとの出し分け
               let icon = <Heart size={14} />;
-              let messageText = "";
+              let messageText = "新しいアクションがありました";
               let linkUrl = "/";
               let iconColorClass = "text-gray-400 dark:text-zinc-400";
               let iconBgClass = "bg-gray-50/80 dark:bg-zinc-950/80";
@@ -115,13 +138,14 @@ export default async function NotificationsPage() {
                   iconBgClass = "bg-amber-50/60 border border-amber-100/50 dark:bg-amber-950/20 dark:border-amber-900/40";
                   linkUrl = `/messages`;
                   break;
+                default:
+                  messageText = `${notification.type} タイプの通知があります`;
+                  break;
               }
 
               return (
-                /* 通知アイテムカードのベース背景を `dark:bg-zinc-900`
-                   未読（!is_read）のときは、少し明るいアンバーの透過（dark:bg-amber-950/10）をブレンドしてカード自体を強調 */
                 <Link
-                  key={`notification-item-${notification.id}`}
+                  key={`notification-item-${notification.id}-${idx}`}
                   href={linkUrl}
                   className={`block bg-white dark:bg-zinc-900 rounded-[1.5rem] shadow-sm border p-5 transition-all duration-200 active:scale-[0.98] relative group ${
                     !notification.is_read 
@@ -134,7 +158,6 @@ export default async function NotificationsPage() {
                   )}
 
                   <div className="flex items-start gap-3">
-                    {/* アバター内枠の沈め背景を最深の zinc-950 に */}
                     <img 
                       src={avatarUrl} 
                       className="w-10 h-10 rounded-full object-cover border border-gray-50 dark:border-zinc-800 flex-shrink-0 bg-gray-50 dark:bg-zinc-950" 
@@ -142,14 +165,10 @@ export default async function NotificationsPage() {
                     />
                     
                     <div className="flex-1 min-w-0">
-                      {/* カード（zinc-900）の上に乗るバッジの背景を、コントラストを出すために最深の `dark:bg-zinc-950/40` に調整 */}
                       <div className="text-[13px] font-bold text-gray-800 dark:text-zinc-200 flex items-center flex-wrap gap-x-1.5 gap-y-1 mb-1.5">
                         <span style={{ color: GOLD_COLOR }}>{notifierName}</span>
                         <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 dark:text-amber-400 dark:bg-zinc-950/40 px-1.5 py-0.5 rounded border border-amber-100/70 dark:border-amber-900/50 shadow-[0_1px_1px_rgba(0,0,0,0.01)]">
                           Lv.{calculatedLevel}
-                        </span>
-                        <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 dark:text-rose-400 dark:bg-zinc-950/40 border border-rose-100/60 dark:border-rose-900/50 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)]">
-                          {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
                         </span>
                       </div>
 
