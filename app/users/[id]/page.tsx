@@ -251,12 +251,13 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
                               </span>
 
                               <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
-                              <ReplyActionButtons 
-                                replyId={reply.id}
-                                awesomeCount={reply.awesomeCount}
-                                initialIsAwesome={reply.myReaction === 'awesome'}
-                                isMyComment={reply.user_id === currentUserId}
-                              />
+                              <ReplyActionButtons
+  replyId={reply.id}
+  awesomeCount={reply.awesomeCount || 0}
+  hugCount={reply.hugCount || 0}
+  initialMyReaction={reply.myReaction}
+  isMyComment={reply.user_id === currentUserId}
+/>
                             </div>
                           </div>
                         );

@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ReactionButtons } from './reaction-buttons'
 import { ReplyActionButtons } from './reply-action-buttons' 
 import { toast } from 'sonner'
-import { deletePost, reportPost, fetchMorePosts } from '@/app/actions' // 💡 fetchMorePosts をインポート
+import { deletePost, reportPost, reportReply, fetchMorePosts } from '@/app/actions' // 💡 reportReply を追加インポート
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
 import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, X } from 'lucide-react'
@@ -40,7 +40,7 @@ export default function FilteredTimeline({
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
   const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
   
-  // 💡 無限スクロール用のステートとRefを追加
+  // 無限スクロール用のステートとRef
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loaderRef = useRef<HTMLDivElement>(null);
@@ -50,7 +50,7 @@ export default function FilteredTimeline({
   // 親から新しい初期データ(最初の20件)が降ってきたら同期・リセットする
   useEffect(() => {
     setTimelinePosts(mainPosts);
-    setHasMore(mainPosts.length >= 20); // 初期件数が20件未満ならこれ以上データはないと判断
+    setHasMore(mainPosts.length >= 20);
   }, [mainPosts]);
 
   // リアルタイム監視
@@ -69,7 +69,6 @@ export default function FilteredTimeline({
             setTimelinePosts((current) => current.filter((p) => p.id !== payload.old.id));
           }
           if (payload.eventType === 'INSERT') {
-            // 新規投稿があった場合は、ルーターをリフレッシュして親コンポーネント側のデータを最新化する
             router.refresh();
           }
         }
@@ -81,7 +80,7 @@ export default function FilteredTimeline({
     };
   }, [router]);
 
-  // 💡 【追加】スクロール最下部を検知して次を読み込むIntersectionObserverのフック
+  // スクロール最下部を検知して次を読み込むIntersectionObserverのフック
   useEffect(() => {
     if (!hasMore || isLoadingMore) return;
 
@@ -101,13 +100,12 @@ export default function FilteredTimeline({
     return () => observer.disconnect();
   }, [timelinePosts, hasMore, isLoadingMore]);
 
-  // 💡 【追加】次の一覧を裏でロードして合体させる関数
+  // 次の一覧を裏でロードして合体させる関数
   const loadNextPosts = async () => {
     if (isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
 
     try {
-      // 現在の件数を offset として次の20件を取得
       const currentOffset = timelinePosts.length;
       const nextPosts = await fetchMorePosts(currentOffset, 20);
 
@@ -115,7 +113,6 @@ export default function FilteredTimeline({
         setHasMore(false);
       } else {
         setTimelinePosts((current) => {
-          // リアルタイムINSERTなどで既に上部に差し込まれた投稿との重複を完全に防止する
           const currentIds = new Set(current.map((p) => p.id));
           const filteredNext = nextPosts.filter((p: any) => !currentIds.has(p.id));
           
@@ -124,7 +121,7 @@ export default function FilteredTimeline({
             return current;
           }
           
-          return [...current, ...filteredNext]; // 既存データの後ろに合体
+          return [...current, ...filteredNext];
         });
       }
     } catch (err) {
@@ -184,6 +181,24 @@ export default function FilteredTimeline({
       }
     } catch (error) {
       setReportedPostIds(prev => ({ ...prev, [postId]: false }));
+      toast.error('エラーが発生しました');
+    }
+  };
+
+  // 💡 リプライ専用の通報ハンドラを追加
+  const handleReportReply = async (replyId: number) => {
+    if (!window.confirm('このコメントに悪意を感じますか？\n不適切な表現がある場合、確認の上対処いたします。')) return;
+    setReportedPostIds(prev => ({ ...prev, [replyId]: true }));
+    try {
+      const res = await reportReply(replyId);
+      if (res && res.success) {
+        toast.success('コメントの通報を受け付けました。');
+      } else {
+        setReportedPostIds(prev => ({ ...prev, [replyId]: false }));
+        toast.error('処理に失敗しました');
+      }
+    } catch (error) {
+      setReportedPostIds(prev => ({ ...prev, [replyId]: false }));
       toast.error('エラーが発生しました');
     }
   };
@@ -323,27 +338,69 @@ export default function FilteredTimeline({
                           reply.authorProfile?.totalHug ?? 0;
 
                         const replyCalculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(replyAwesome)) + 1));
+                        const isReplyReported = !!reportedPostIds[reply.id];
 
                         return (
                           <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
                             <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50 dark:border-zinc-800 transition-colors duration-200" alt="" />
                             <div className="flex-1 bg-gray-50/80 dark:bg-zinc-900/60 p-3 rounded-2xl relative text-zinc-900 dark:text-zinc-100 transition-colors duration-200 border border-transparent dark:border-zinc-800/40">
-                              <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-1.5" style={{ color: GOLD_COLOR }}>
-                                <span className="text-zinc-900 dark:text-zinc-100">{reply.authorProfile?.full_name}</span>
-                                <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-100/70 dark:border-amber-900/60">
-                                  Lv.{replyCalculatedLevel}
+                              
+                              {/* 💡 修正箇所①：リプライ用のヘッダー管理（名前・Lv・削除＆通報ボタン） */}
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5" style={{ color: GOLD_COLOR }}>
+                                  <span className="text-zinc-900 dark:text-zinc-100">{reply.authorProfile?.full_name}</span>
+                                  <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-100/70 dark:border-amber-900/60">
+                                    Lv.{replyCalculatedLevel}
+                                  </span>
+                                  <span className="text-[8px] font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 px-1.5 py-0.2 rounded-full">
+                                    {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
+                                  </span>
                                 </span>
-                                <span className="text-[8px] font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 px-1.5 py-0.2 rounded-full">
-                                  {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
-                                </span>
-                              </span>
+
+                                {reply.user_id === user?.id ? (
+                                  <button onClick={() => handleDelete(reply.id)} className="text-gray-300 dark:text-zinc-600 hover:text-rose-400 p-1 transition-colors">
+                                    <Trash2 size={13} strokeWidth={2.5} />
+                                  </button>
+                                ) : (
+                                  <button 
+                                    onClick={() => handleReportReply(reply.id)} 
+                                    disabled={isReplyReported}
+                                    className={`text-gray-300 dark:text-zinc-600 hover:text-rose-400 p-1 transition-colors ${isReplyReported ? 'text-zinc-500 cursor-not-allowed' : ''}`}
+                                  >
+                                    <AlertTriangle size={13} strokeWidth={2.5} />
+                                  </button>
+                                )}
+                              </div>
+
                               <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
-                              <ReplyActionButtons 
-                                replyId={reply.id}
-                                awesomeCount={reply.awesomeCount}
-                                initialIsAwesome={reply.myReaction === 'awesome'}
-                                isMyComment={reply.user_id === user?.id}
-                              />
+
+                              {/* 💡 修正箇所②：リプライ内の画像・動画（マルチメディア）レンダリング */}
+                              {reply.video_url ? (
+                                <div 
+                                  onClick={() => setActiveMedia({ type: 'video', url: reply.video_url })}
+                                  className="mt-2 rounded-lg overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-black cursor-pointer max-w-xs"
+                                >
+                                  <video src={reply.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
+                                </div>
+                              ) : reply.image_url && (
+                                <div 
+                                  onClick={() => setActiveMedia({ type: 'image', url: reply.image_url })}
+                                  className="mt-2 rounded-lg overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-gray-50 dark:bg-zinc-900/50 cursor-pointer max-w-xs"
+                                >
+                                  <img src={reply.image_url} alt="" className="w-full h-auto block" loading="lazy" />
+                                </div>
+                              )}
+
+                              {/* 💡 修正箇所③：ReplyActionButtons へのリアクション動的プロパティ結合 */}
+                              <div className="mt-2 pt-1 border-t border-gray-100 dark:border-zinc-800/40">
+                                <ReplyActionButtons 
+                                  replyId={reply.id}
+                                  awesomeCount={reply.awesomeCount || 0}
+                                  hugCount={reply.hugCount || 0} // Hugカウントの受け渡しを追加
+                                  initialMyReaction={reply.myReaction} // 自分がリアクション済みかのステート追加
+                                  isMyComment={reply.user_id === user?.id}
+                                />
+                              </div>
                             </div>
                           </div>
                         );
@@ -356,11 +413,10 @@ export default function FilteredTimeline({
             );
           })}
 
-          {/* 💡 【追加】スクロール位置を監視するためのローダー要素 */}
+          {/* スクロール位置を監視するためのローダー要素 */}
           {hasMore && (
             <div ref={loaderRef} className="flex justify-center py-6">
               {isLoadingMore ? (
-                /* ダークモードに対応したゴールドスピナー */
                 <div className="w-6 h-6 border-2 border-[#B8860B] border-t-transparent rounded-full animate-spin" />
               ) : (
                 <span className="text-[10px] font-bold tracking-widest text-zinc-400 dark:text-zinc-600 uppercase">

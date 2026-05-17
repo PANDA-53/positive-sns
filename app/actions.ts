@@ -282,6 +282,7 @@ export async function fetchMainTimelineData(userId: string) {
       }))
       .filter(req => req.sender_profile);
 
+    // 💡 修正箇所：親投稿もリプライも含め、すべての投稿（posts）に対してリアクション情報、Myリアクション状態、投稿者プロフィールを正しくマッピングします
     const formattedPosts = posts.map(post => ({
       ...post,
       authorProfile: enrichedProfiles.find(p => p.id === post.user_id) || { full_name: '匿名', avatar_url: '', totalAwesome: 0 },
@@ -292,7 +293,7 @@ export async function fetchMainTimelineData(userId: string) {
 
     return {
       mainPosts: formattedPosts.filter(p => !p.parent_id),
-      replies: formattedPosts.filter(p => p.parent_id),
+      replies: formattedPosts.filter(p => p.parent_id), // 💡 ここに各種カウント・myReaction・プロフィール情報が完全に結合されたリプライが入るようになります
       friendIds: Array.from(friendMap.keys()) as string[], 
       pendingRequests,
       acceptedFriends
@@ -305,7 +306,6 @@ export async function fetchMainTimelineData(userId: string) {
 
 /**
  * 3. プロフィールデータの取得
- * 💡 戻り値の型定義を100%厳格化してフロントエンドのエラーを根絶
  */
 export async function fetchUserProfileData(targetUserId: string, currentUserId: string): Promise<{
   profile: any;
@@ -342,7 +342,6 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   const totalAwesomeCount = awesomeRes.data?.length || 0;
   const friendship = friendshipRes.data;
 
-  // 💡 友達状態の動的な文字列パース処理を確実に行う
   let friendshipStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' = 'none';
   if (friendship) {
     if (friendship.status === 'accepted') {
@@ -366,7 +365,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
     profile: profileRes.data,
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
     friendship,
-    friendshipStatus, // 💡 ここが確実に4パターンの文字列型であることをTypeScriptに保証
+    friendshipStatus, 
     isMe: cleanTargetId === currentUserId, 
     totalAwesomeCount, 
     error: profileRes.error
@@ -411,7 +410,6 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     }
   }
 
-  // .select().single() で作成されたデータを確実に取得
   const { data: insertedPost, error: insertError } = await supabase
     .from('posts')
     .insert({ 
@@ -425,7 +423,6 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     .select()
     .single();
 
-  // 💡 エラーハンドリングを厳格にして型を保証
   if (insertError || !insertedPost) {
     return { isToxic: false, reason: "", suggestions: [], success: false, error: "DB保存失敗" };
   }
@@ -435,10 +432,8 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     if (parentPost && parentPost.user_id !== user.id) {
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
       
-      // 1. WebPush通知
       await sendNotificationToUser(parentPost.user_id, "新しい返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
       
-      // 2. アプリ内通知データの保存（今作ったリプライ自身のIDを指定）
       await createNotification({
         userId: parentPost.user_id,
         notifierId: user.id,
@@ -458,9 +453,10 @@ export async function createReply(formData: FormData): Promise<PostResult> {
   const supabase = await createClient();
   const content = formData.get('content') as string;
   const parentId = formData.get('parentId') as string; 
+  const file = formData.get('media') instanceof File ? (formData.get('media') as File) : null; // 💡 修正箇所：フォームから送られてきた画像・動画ファイルの受け取り
+  
   const { data: { user } } = await supabase.auth.getUser();
   
-  // 💡 ユーザーがいない場合に確実に PostResult 型を返してエラーを防ぐ
   if (!user) {
     return { success: false, isToxic: false, reason: "認証エラー", suggestions: [] };
   }
@@ -468,19 +464,43 @@ export async function createReply(formData: FormData): Promise<PostResult> {
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return { ...result, success: false };
 
-  // .select().single() で作成されたリプライデータを取得
+  // 💡 修正箇所：リプライ用マルチメディアのアップロード＆ストレージ保存処理を追加
+  let imageUrl = null;
+  let videoUrl = null;
+
+  if (file && file.size > 0 && file.name !== 'undefined') {
+    const isVideo = file.type.startsWith('video/');
+    const bucketName = isVideo ? 'videos' : 'post_images';
+    const fileName = `${user.id}/${Date.now()}.${file.name.split('.').pop()}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from(bucketName)
+      .upload(fileName, file);
+
+    if (!uploadError) {
+      const { data: { publicUrl } } = supabase.storage.from(bucketName).getPublicUrl(fileName);
+      if (isVideo) {
+        videoUrl = publicUrl;
+      } else {
+        imageUrl = publicUrl;
+      }
+    }
+  }
+
+  // 💡 修正箇所：生成した画像・動画のURLを含めてリプライをデータベースにインサート
   const { data: insertedReply, error: insertError } = await supabase
     .from('posts')
     .insert({ 
       content, 
       parent_id: parseInt(parentId), 
       user_id: user.id,
-      privacy_level: 'public'
+      privacy_level: 'public',
+      image_url: imageUrl, // 保存した画像URLを反映
+      video_url: videoUrl   // 保存した動画URLを反映
     })
     .select()
     .single();
 
-  // 💡 インサート失敗時も確実に PostResult 型をリターンさせて分岐の漏れを無くす
   if (insertError || !insertedReply) {
     return { success: false, isToxic: false, reason: "コメントの保存に失敗しました", suggestions: [] };
   }
@@ -489,10 +509,8 @@ export async function createReply(formData: FormData): Promise<PostResult> {
   if (parentPost && parentPost.user_id !== user.id) {
     const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
     
-    // 1. WebPush通知
     await sendNotificationToUser(parentPost.user_id, "返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
     
-    // 2. アプリ内通知データの保存（今作ったリプライ自身のIDを指定）
     await createNotification({
       userId: parentPost.user_id,
       notifierId: user.id,
@@ -586,7 +604,6 @@ export async function updateProfile(formData: FormData) {
   revalidatePath('/notifications');
   revalidatePath('/');
 
-  // 念のため、結果にuserIdを含めて返しておくとフロント側の遷移がより確実になります
   return { success: true, userId: user.id };
 }
 
@@ -631,10 +648,8 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
       const { data: myProfile } = await supabase.from('profiles').select('full_name').eq('id', user.id).single();
       const icon = reactionType === 'awesome' ? '✨' : '🫂';
       
-      // 1. WebPush通知
       await sendNotificationToUser(post.user_id, `${icon} リアクション`, `${myProfile?.full_name || '誰か'}さんがリアクションしました`, `/`);
       
-      // 🛠️ 2. アプリ内通知データの保存
       await createNotification({
         userId: post.user_id,
         notifierId: user.id,
@@ -749,7 +764,7 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
   });
   revalidatePath('/messages');
   revalidatePath(`/messages/${user.id}`);
-  revalidatePath('/notifications'); // DM通知用
+  revalidatePath('/notifications'); 
 
   return { success: true, isToxic: false, reason: "", suggestions: [] };
 }
@@ -806,15 +821,11 @@ export async function fetchChatHistoryList() {
 export async function fetchMorePosts(offset: number, limit: number = 20) {
   const supabase = await createClient();
   
-  // 現在ログインしているユーザー情報を取得
   const { data: { user } } = await supabase.auth.getUser();
   const currentUserId = user?.id;
 
   if (!currentUserId) return [];
 
-  // ---------------------------------------------------------
-  // 💡 パターン1: 先行して「フレンドのIDリスト」を最速で取得する
-  // ---------------------------------------------------------
   const { data: friendships, error: friendError } = await supabase
     .from('friendships')
     .select('user_id, friend_id')
@@ -826,28 +837,20 @@ export async function fetchMorePosts(offset: number, limit: number = 20) {
     return [];
   }
 
-  // 自分が関わっている相手のIDだけを抽出して配列にする
   const friendIds: string[] = friendships?.map(f => 
     f.user_id === currentUserId ? f.friend_id : f.user_id
   ) || [];
 
-
-  // ---------------------------------------------------------
-  // 💡 フィルタリング: 事前に確定した friendIds を使ってクエリ側で絞り込む！
-  // ---------------------------------------------------------
-  // 条件: ①パブリック、②自分の投稿、③フレンド限定かつ投稿主が自分のフレンド
   let postQuery = supabase
     .from('posts')
     .select(`*, reactions (type, user_id)`)
-    .filter('parent_id', 'is', null) // 親投稿のみ
+    .filter('parent_id', 'is', null) 
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1);
 
   if (friendIds.length > 0) {
-    // フレンドが1人以上いる場合は、inクエリで結合
     postQuery = postQuery.or(`privacy_level.eq.public, user_id.eq.${currentUserId}, and(privacy_level.eq.friends, user_id.in.(${friendIds.join(',')}))`);
   } else {
-    // フレンドがいない場合は、パブリックか自分の投稿のみ
     postQuery = postQuery.or(`privacy_level.eq.public, user_id.eq.${currentUserId}`);
   }
 
@@ -858,9 +861,6 @@ export async function fetchMorePosts(offset: number, limit: number = 20) {
     return [];
   }
 
-  // ---------------------------------------------------------
-  // 3️⃣ プロフィール情報と全Awesome数の結合（以下は前回と同様）
-  // ---------------------------------------------------------
   const postUserIds = posts.map(p => p.user_id);
   const uniqueUserIds = Array.from(new Set(postUserIds)).filter(Boolean);
 
