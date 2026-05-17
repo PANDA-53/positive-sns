@@ -93,9 +93,12 @@ function MainTimelineContent({ user, viewMode }: MainTimelineContentProps) {
                 <span className="font-bold text-xs text-gray-800 dark:text-zinc-200">{req.sender_profile?.full_name}</span>
               </div>
               <form action={async (formData) => {
-                const { acceptFriendRequest } = await import('./actions');
-                await acceptFriendRequest(formData);
-              }}>
+  const { acceptFriendRequest } = await import('./actions');
+  const requesterId = formData.get('requesterId') as string; // ⭕ 値を取り出す
+  if (requesterId) {
+    await acceptFriendRequest(requesterId); // ⭕ 文字列を渡す
+  }
+}}>
                 <input type="hidden" name="requesterId" value={req.user_id} />
                 <button type="submit" className="text-[10px] text-white px-4 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-all hover:opacity-90" style={{ backgroundColor: GOLD_COLOR }}>承認</button>
               </form>

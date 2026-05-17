@@ -305,8 +305,17 @@ export async function fetchMainTimelineData(userId: string) {
 
 /**
  * 3. プロフィールデータの取得
+ * 💡 戻り値の型定義を100%厳格化してフロントエンドのエラーを根絶
  */
-export async function fetchUserProfileData(targetUserId: string, currentUserId: string) {
+export async function fetchUserProfileData(targetUserId: string, currentUserId: string): Promise<{
+  profile: any;
+  mainPosts: any[];
+  friendship: any;
+  friendshipStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted';
+  isMe: boolean;
+  totalAwesomeCount: number;
+  error: any;
+}> {
   const supabase = await createClient();
   const cleanTargetId = targetUserId.trim();
 
@@ -320,7 +329,7 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   const [profileRes, postsRes, friendshipRes, allReactionsRes, awesomeRes] = await Promise.all([
     supabase.from('profiles').select('*').eq('id', cleanTargetId).single(),
     supabase.from('posts').select('*').eq('user_id', cleanTargetId).order('created_at', { ascending: false }),
-    supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${cleanTargetId}),and(user_id.eq.${cleanTargetId},friend_id.eq.${currentUserId})`).single(),
+    supabase.from('friendships').select('*').or(`and(user_id.eq.${currentUserId},friend_id.eq.${cleanTargetId}),and(user_id.eq.${cleanTargetId},friend_id.eq.${currentUserId})`).maybeSingle(),
     supabase.from('reactions').select('*'),
     
     postIds.length > 0 
@@ -331,6 +340,17 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   const posts = postsRes.data || [];
   const reactions = allReactionsRes.data || [];
   const totalAwesomeCount = awesomeRes.data?.length || 0;
+  const friendship = friendshipRes.data;
+
+  // 💡 友達状態の動的な文字列パース処理を確実に行う
+  let friendshipStatus: 'none' | 'pending_sent' | 'pending_received' | 'accepted' = 'none';
+  if (friendship) {
+    if (friendship.status === 'accepted') {
+      friendshipStatus = 'accepted';
+    } else if (friendship.status === 'pending') {
+      friendshipStatus = friendship.user_id === currentUserId ? 'pending_sent' : 'pending_received';
+    }
+  }
 
   const formattedPosts = posts.map((post: any) => {
     const postReactions = reactions.filter((r: any) => r.post_id === post.id);
@@ -345,7 +365,8 @@ export async function fetchUserProfileData(targetUserId: string, currentUserId: 
   return {
     profile: profileRes.data,
     mainPosts: formattedPosts.filter(p => !p.parent_id), 
-    friendship: friendshipRes.data,
+    friendship,
+    friendshipStatus, // 💡 ここが確実に4パターンの文字列型であることをTypeScriptに保証
     isMe: cleanTargetId === currentUserId, 
     totalAwesomeCount, 
     error: profileRes.error
@@ -475,7 +496,9 @@ export async function sendFriendRequest(targetUserId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   await supabase.from('friendships').insert({ user_id: user.id, friend_id: targetUserId, status: 'pending' });
+  
   revalidatePath(`/users/${targetUserId}`);
+  revalidatePath('/');
 }
 
 export async function deleteFriendship(targetUserId: string) {
@@ -483,15 +506,23 @@ export async function deleteFriendship(targetUserId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return;
   await supabase.from('friendships').delete().or(`and(user_id.eq.${user.id},friend_id.eq.${targetUserId}),and(user_id.eq.${targetUserId},friend_id.eq.${user.id})`);
+  
   revalidatePath(`/users/${targetUserId}`);
+  revalidatePath('/');
 }
 
-export async function acceptFriendRequest(formData: FormData) {
-  const requesterId = formData.get('requesterId') as string;
+export async function acceptFriendRequest(requesterId: string) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !requesterId) return;
-  await supabase.from('friendships').update({ status: 'accepted' }).eq('user_id', requesterId).eq('friend_id', user.id);
+  
+  await supabase
+    .from('friendships')
+    .update({ status: 'accepted' })
+    .eq('user_id', requesterId)
+    .eq('friend_id', user.id);
+  
+  revalidatePath(`/users/${requesterId}`);
   revalidatePath('/');
 }
 
@@ -658,7 +689,6 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
     return { ...moderatorResult, errorType: 'toxic-content', success: false };
   }
 
-  // 1. メッセージ自体の保存
   const { data: insertedMsg, error } = await supabase
     .from('direct_messages')
     .insert({
@@ -680,7 +710,6 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
     .eq('id', user.id)
     .single();
 
-  // 2. WebPush通知
   await sendNotificationToUser(
     receiverId,
     `📩 ${myProfile?.full_name || '誰か'}さんからのメッセージ`,
@@ -688,7 +717,6 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
     `/messages/${user.id}`
   );
 
-  // 🛠️ 3. アプリ内通知データの保存
   await createNotification({
     userId: receiverId,
     notifierId: user.id,
@@ -699,9 +727,6 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
   return { success: true, isToxic: false, reason: "", suggestions: [] };
 }
 
-/**
- * ログイン中のユーザーがやり取りしたことのあるチャット相手の一覧と、最新のメッセージを取得する
- */
 export async function fetchChatHistoryList() {
   const supabase = await createClient();
   

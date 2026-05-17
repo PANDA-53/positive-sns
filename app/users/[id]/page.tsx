@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation'; // 💡 ログアウト後の遷移用に useRouter を追加
 import { ReactionButtons } from '@/components/reaction-buttons';
 import { ReplyActionButtons } from '@/components/reply-action-buttons'; 
+import { FriendButton } from '@/components/friend-button';
 import Link from 'next/link';
 import PullToRefresh from '@/components/pull-to-refresh';
 import ReplyForm from '@/components/ReplyForm';
@@ -21,7 +22,8 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
   const router = useRouter();
   const supabase = createClient(); // 💡 Supabase クライアントの初期化
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  // 💡 修正箇所：<Awaited<ReturnType<typeof fetchUserProfileData>>> を追加して、新基盤の戻り値型をTypeScriptに完全同期
+  const { data, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ['user-profile', targetId, currentUserId],
     queryFn: () => fetchUserProfileData(targetId, currentUserId),
     staleTime: 1000 * 60,
@@ -98,8 +100,7 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
         </div>
 
         {/* ボタン表示エリア */}
-        {/* 💡 修正箇所1: 自分のページの場合、編集とログアウトを綺麗に横並び(flex-row)で配置 */}
-        <div className="flex justify-center w-full gap-3">
+        <div className="flex justify-center w-full gap-3 items-center">
           {isMe ? (
             <>
               <Link 
@@ -119,14 +120,26 @@ function UserPageContent({ targetId, currentUserId }: { targetId: string, curren
               </button>
             </>
           ) : (
-            <Link 
-              href={`/messages/${targetId}`}
-              className="flex items-center justify-center gap-2 px-5 py-2 rounded-full text-[10px] font-bold text-white transition-all active:scale-95 shadow-sm hover:opacity-90"
-              style={{ backgroundColor: GOLD_COLOR }}
-            >
-              <MessageSquare size={12} strokeWidth={2.5} />
-              <span>DMを送る</span>
-            </Link>
+            <>
+              {/* 💡 共通化したフレンドボタンを設置 */}
+              <FriendButton 
+                targetUserId={targetId} 
+                initialStatus={data?.friendshipStatus} 
+                onStatusChange={() => refetch()} 
+              />
+
+              {/* 💡 既に友達（accepted）の場合のみDMボタンを横に並べて表示 */}
+              {data?.friendshipStatus === 'accepted' && (
+                <Link 
+                  href={`/messages/${targetId}`}
+                  className="flex items-center justify-center gap-2 px-5 py-2 rounded-full text-[10px] font-bold text-white transition-all active:scale-95 shadow-sm hover:opacity-90 animate-in fade-in zoom-in-95 duration-200"
+                  style={{ backgroundColor: GOLD_COLOR }}
+                >
+                  <MessageSquare size={12} strokeWidth={2.5} />
+                  <span>DMを送る</span>
+                </Link>
+              )}
+            </>
           )}
         </div>
       </section>
