@@ -450,6 +450,7 @@ export async function createPost(formData: FormData): Promise<PostResult> {
 
   revalidatePath('/', 'layout');
   revalidatePath('/', 'page');
+  revalidatePath('/notifications');
   return { isToxic: false, reason: "", suggestions: [], success: true };
 }
 
@@ -502,6 +503,7 @@ export async function createReply(formData: FormData): Promise<PostResult> {
 
   revalidatePath('/', 'layout');
   revalidatePath('/', 'page');
+  revalidatePath('/notifications');
   return { success: true, isToxic: false, reason: "", suggestions: [] };
 }
 
@@ -581,7 +583,11 @@ export async function updateProfile(formData: FormData) {
   }
 
   revalidatePath('/', 'layout');
-  return { success: true };
+  revalidatePath('/notifications');
+  revalidatePath('/');
+
+  // 念のため、結果にuserIdを含めて返しておくとフロント側の遷移がより確実になります
+  return { success: true, userId: user.id };
 }
 
 export async function updatePushSubscription(subscriptionJson: string) {
@@ -638,6 +644,7 @@ export async function handleReaction(postId: number, reactionType: 'awesome' | '
     }
   }
   revalidatePath('/');
+  revalidatePath('/notifications');
 }
 
 export async function deletePost(formData: FormData) {
@@ -740,6 +747,9 @@ export async function sendDirectMessage(receiverId: string, message: string): Pr
     type: 'dm',
     dmMessageId: insertedMsg.id
   });
+  revalidatePath('/messages');
+  revalidatePath(`/messages/${user.id}`);
+  revalidatePath('/notifications'); // DM通知用
 
   return { success: true, isToxic: false, reason: "", suggestions: [] };
 }
