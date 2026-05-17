@@ -9,12 +9,25 @@ import { useRouter } from 'next/navigation'
 
 const GOLD_COLOR = "#B8860B";
 
-// --- 通知設定用サブコンポーネント ---
+// 💡 鍵変換用のヘルパー関数（PushManagerに安全に公開鍵を渡すために必要）
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
+// --- 💡 修正・最適化された通知設定用サブコンポーネント ---
 function NotificationSetter({ userId, initialSubscription }: { userId: string, initialSubscription: any }) {
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(!!initialSubscription);
   
-  const VAPID_PUBLIC_KEY = "BJEoIlcIMB4uXEChjfcDjdzdu2wNrVgklCvK2Qyjbulq0FBoM9IFcOPaI3gsv_ZEdAgnngCVICjIqO5baG0ZIvs";
+  // .env から環境変数を読み込む（フォールバック付き）
+  const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "BJEoIlcIMB4uXEChjfcDjdzdu2wNrVgklCvK2Qyjbulq0FBoM9IFcOPaI3gsv_ZEdAgnngCVICjIqO5baG0ZIvs";
 
   useEffect(() => {
     async function checkSubscription() {
@@ -34,22 +47,31 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
   }, []);
 
   const handleSubscribe = async () => {
-    if (!('serviceWorker' in navigator)) {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
       toast.error("このブラウザは通知に対応していません");
       return;
     }
 
     setIsSubscribing(true);
     try {
+      // 1. 通知の明示的なパーミッション要求
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        toast.error("通知の許可が拒否されました。設定から変更してください。");
+        return;
+      }
+
       await navigator.serviceWorker.register('/sw.js');
       const registration = await navigator.serviceWorker.ready;
       
+      // 💡 2. 鍵を Uint8Array にデコードして安全に登録
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: VAPID_PUBLIC_KEY
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
       });
 
-      await updatePushSubscription(JSON.stringify(subscription));
+      // 💡 3. 新しいアクションの引数（userId, JSONオブジェクト）の仕様へ変更
+      await updatePushSubscription(userId, subscription.toJSON());
       setHasSubscription(true);
       toast.success("通知が有効になりました！");
     } catch (error) {
@@ -61,7 +83,6 @@ function NotificationSetter({ userId, initialSubscription }: { userId: string, i
   };
 
   return (
-    /* 💡 修正箇所1: 通知ブロックの背景・ボーダーをダークモードに対応 */
     <div className="bg-[#FAF9F6] dark:bg-zinc-950 p-5 rounded-[1.5rem] border border-[#B8860B]/10 dark:border-zinc-800 space-y-3 mt-4 shadow-sm transition-colors duration-200">
       <div className="flex items-center justify-between px-1">
         <div>
@@ -150,10 +171,8 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
   }
 
   return (
-    /* 💡 修正箇所2: 画面全体の背景を dark:bg-zinc-950 に */
     <main className="min-h-screen bg-[#F2F2F2] dark:bg-zinc-950 pb-12 font-sans pt-6 transition-colors duration-200">
       <div className="max-w-2xl mx-auto px-4">
-        {/* 💡 修正箇所3: フォームを包むセクションカードを dark:bg-zinc-900 / dark:border-zinc-800 に */}
         <section className="bg-white dark:bg-zinc-900 p-8 rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-[#E2DED0] dark:border-zinc-800 transition-colors duration-200">
           <form onSubmit={handleSubmit} className="space-y-8">
             
@@ -167,7 +186,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
                 />
               </div>
               <label 
-                /* 💡 修正箇所4: 「写真を変更」ボタンの背景・枠をダークモード時は少しトーンダウン */
                 className="cursor-pointer px-6 py-2 rounded-full text-[10px] font-black border transition-all uppercase tracking-widest active:scale-95 shadow-sm bg-[#F9F6E5] dark:bg-zinc-800 dark:border-zinc-700/60"
                 style={{ color: GOLD_COLOR }}
               >
@@ -187,7 +205,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
             <div className="space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>User Name</label>
-                {/* 💡 修正箇所5: 入力フィールドの背景をダーク時は深めの黒に、文字色を白に変更 */}
                 <input 
                   name="fullName" 
                   type="text" 
@@ -199,7 +216,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
 
               <div className="space-y-2">
                 <label className="text-[10px] font-black uppercase tracking-widest ml-4" style={{ color: GOLD_COLOR }}>Bio</label>
-                {/* 💡 修正箇所6: textarea も同様にダーク背景・白文字に対応 */}
                 <textarea 
                   name="bio" 
                   defaultValue={initialProfile?.bio || ''} 
@@ -226,7 +242,6 @@ export default function ProfileEditForm({ initialProfile }: { initialProfile: an
               </button>
               
               <Link 
-                /* 💡 修正箇所7: キャンセルボタンの背景とホバー、文字色をダーク対応 */
                 href={userPagePath}
                 className="w-full bg-[#F5F5F0] dark:bg-zinc-800 text-gray-400 dark:text-zinc-500 font-black py-4 rounded-2xl text-center block text-[11px] uppercase tracking-[0.2em] active:scale-[0.98] transition-all hover:bg-[#EBEBE0] dark:hover:bg-zinc-700/80"
               >

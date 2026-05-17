@@ -5,7 +5,19 @@ import { toast } from 'sonner';
 import { updatePushSubscription } from '@/app/actions';
 import { useRouter } from 'next/navigation';
 
-const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "あなたのPUBLIC_KEY";
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+
+// 💡 鍵変換用のヘルパー関数
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 export default function NotificationSetter({ userId, initialSubscription }: { userId: string, initialSubscription: any }) {
   const [isSubscribing, setIsSubscribing] = useState(false);
@@ -26,19 +38,32 @@ export default function NotificationSetter({ userId, initialSubscription }: { us
   }, []);
 
   const subscribe = async () => {
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!VAPID_PUBLIC_KEY) {
+      console.error("VAPID Public Key が設定されていません");
+      return;
+    }
 
     setIsSubscribing(true);
     try {
+      // 1. 通知のパーミッション確認
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') {
+        toast.error("通知の許可が拒否されました。設定から変更してください。");
+        return;
+      }
+
       await navigator.serviceWorker.register('/sw.js');
       const registration = await navigator.serviceWorker.ready;
 
+      // 💡 2. 鍵を Uint8Array に変換して安全にサブスクライブ
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: VAPID_PUBLIC_KEY
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
       });
 
-      await updatePushSubscription(JSON.stringify(subscription));
+      // 💡 3. 先ほど新しくした Server Actions の引数の型（userId, JSONオブジェクト）に合わせて呼び出し
+      await updatePushSubscription(userId, subscription.toJSON());
       
       setIsSubscribed(true);
       toast.success("通知を有効にしました");
@@ -52,15 +77,12 @@ export default function NotificationSetter({ userId, initialSubscription }: { us
   };
 
   return (
-    /* 💡 修正箇所：外枠のカードを他ページ同様の rounded-[1.5rem] と dark:bg-zinc-900 / dark:border-zinc-800 に統一 */
     <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-gray-100 dark:border-zinc-800 shadow-sm transition-colors duration-200">
       <div>
-        {/* 💡 修正箇所：テキストカラーをダークモード時に白ベース（zinc-100 / zinc-500）へ */}
         <h3 className="text-sm font-bold text-gray-800 dark:text-zinc-100">プッシュ通知</h3>
         <p className="text-[10px] text-gray-400 dark:text-zinc-500">リアクションや返信をリアルタイムでお知らせ</p>
       </div>
       
-      {/* 💡 修正箇所：ボタンのスタイルを他の機能（FriendButton等）と統一。ENABLED 時はシブい緑トーンへ */}
       <button
         onClick={subscribe}
         disabled={isSubscribing || isSubscribed}

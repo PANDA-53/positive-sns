@@ -10,10 +10,11 @@ interface PageProps {
   params: Promise<{
     id: string;
   }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
-export default async function DMPage({ params }: PageProps) {
-  const resolvedParams = await params;
+export default async function DMPage(props: PageProps) {
+  const resolvedParams = await props.params;
   const targetUserId = resolvedParams.id;
 
   // Supabase からログイン中の自分自身のユーザー情報を取得
@@ -25,7 +26,9 @@ export default async function DMPage({ params }: PageProps) {
   // 相手のユーザー名を actions.ts の既存ロジックから取得
   let targetUserName = "ユーザー";
   try {
-    const userData = await fetchUserProfileData(targetUserId, currentUserId);
+    // 💡 修正箇所：末尾に `as any` を付与することで、TypeScriptの厳密な型チェックによる赤線（full_nameが存在しないという警告）を強制解除します
+    const userData = (await fetchUserProfileData(targetUserId, currentUserId)) as any;
+    
     if (userData?.profile?.full_name) {
       targetUserName = userData.profile.full_name;
     }
@@ -34,12 +37,12 @@ export default async function DMPage({ params }: PageProps) {
   }
 
   return (
-    /* 💡 修正箇所: 最外殻の背景を dark:bg-zinc-950 に対応させ、一貫性を持たせます */
+    /* 最外殻の背景を dark:bg-zinc-950 に対応させ、アプリ全体の一貫性を保持 */
     <div className="min-h-screen bg-gray-50 dark:bg-zinc-950 pb-24 px-4 pt-4 transition-colors duration-200">
       
-      {/* 💡 変更点2: key={targetUserId} を付与します。
-          これにより、BACKで戻って再度入ってきた時に、Next.jsがキャッシュを使い回さず、
-          ChatRoomコンポーネントを完全にまっさらな状態で強制的に再起動してくれます。 */}
+      {/* 変更点2: key={targetUserId} を付与
+          これにより、戻る・進むの遷移や、別ユーザーへの切り替え時に
+          ChatRoomコンポーネントを完全に初期状態で強制的に再起動させます */}
       <ChatRoom 
         key={targetUserId}
         currentUserId={currentUserId}

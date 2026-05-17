@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ReactionButtons } from './reaction-buttons'
 import { ReplyActionButtons } from './reply-action-buttons' 
 import { toast } from 'sonner'
-import { deletePost, reportPost, reportReply, fetchMorePosts } from '@/app/actions' // 💡 reportReply を追加インポート
+import { deletePost, reportPost, reportReply, fetchMorePosts } from '@/app/actions'
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
 import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, X } from 'lucide-react'
@@ -35,22 +35,22 @@ export default function FilteredTimeline({
   onSuccess,
   viewModeProp = 'all'
 }: FilteredTimelineProps) {
-  const [timelinePosts, setTimelinePosts] = useState<any[]>(mainPosts);
+  // 💡 初期値が undefined や null で来ても絶対に落ちないように空配列でフォールバック
+  const [timelinePosts, setTimelinePosts] = useState<any[]>(Array.isArray(mainPosts) ? mainPosts : []);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
   const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
   
-  // 無限スクロール用のステートとRef
   const [hasMore, setHasMore] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const loaderRef = useRef<HTMLDivElement>(null);
 
   const router = useRouter();
 
-  // 親から新しい初期データ(最初の20件)が降ってきたら同期・リセットする
   useEffect(() => {
-    setTimelinePosts(mainPosts);
-    setHasMore(mainPosts.length >= 20);
+    const safePosts = Array.isArray(mainPosts) ? mainPosts : [];
+    setTimelinePosts(safePosts);
+    setHasMore(safePosts.length >= 20);
   }, [mainPosts]);
 
   // リアルタイム監視
@@ -66,7 +66,7 @@ export default function FilteredTimeline({
         },
         (payload) => {
           if (payload.eventType === 'DELETE') {
-            setTimelinePosts((current) => current.filter((p) => p.id !== payload.old.id));
+            setTimelinePosts((current) => current.filter((p) => p && p.id !== payload.old.id));
           }
           if (payload.eventType === 'INSERT') {
             router.refresh();
@@ -80,7 +80,7 @@ export default function FilteredTimeline({
     };
   }, [router]);
 
-  // スクロール最下部を検知して次を読み込むIntersectionObserverのフック
+  // スクロール監視
   useEffect(() => {
     if (!hasMore || isLoadingMore) return;
 
@@ -100,7 +100,6 @@ export default function FilteredTimeline({
     return () => observer.disconnect();
   }, [timelinePosts, hasMore, isLoadingMore]);
 
-  // 次の一覧を裏でロードして合体させる関数
   const loadNextPosts = async () => {
     if (isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
@@ -113,8 +112,8 @@ export default function FilteredTimeline({
         setHasMore(false);
       } else {
         setTimelinePosts((current) => {
-          const currentIds = new Set(current.map((p) => p.id));
-          const filteredNext = nextPosts.filter((p: any) => !currentIds.has(p.id));
+          const currentIds = new Set(current.filter(Boolean).map((p) => p.id));
+          const filteredNext = nextPosts.filter((p: any) => p && !currentIds.has(p.id));
           
           if (filteredNext.length === 0) {
             setHasMore(false);
@@ -139,17 +138,18 @@ export default function FilteredTimeline({
     );
   }
 
-  // 表示可能な投稿をフィルタリング
+  // 表示可能な投稿をフィルタリング（安全性を強化）
+  const safeFriendIds = Array.isArray(friendIds) ? friendIds : [];
   const visiblePosts = timelinePosts.filter((post: any) => {
-    if (!post) return false;
+    if (!post || !post.id) return false;
     const hasPermission = 
       post.privacy_level === 'public' || 
       post.user_id === user?.id || 
-      (post.privacy_level === 'friends' && friendIds?.includes(post.user_id));
+      (post.privacy_level === 'friends' && safeFriendIds.includes(post.user_id));
     
     if (!hasPermission) return false;
     if (viewModeProp === 'friends') {
-      return friendIds?.includes(post.user_id) || post.user_id === user?.id;
+      return safeFriendIds.includes(post.user_id) || post.user_id === user?.id;
     }
     return true;
   });
@@ -160,7 +160,7 @@ export default function FilteredTimeline({
     formData.append('postId', postId.toString());
     try {
       await deletePost(formData);
-      toast.success('投稿を削除しました');
+      toast.success('削除しました');
       router.refresh();
       if (onSuccess) onSuccess();
     } catch (error) {
@@ -185,7 +185,6 @@ export default function FilteredTimeline({
     }
   };
 
-  // 💡 リプライ専用の通報ハンドラを追加
   const handleReportReply = async (replyId: number) => {
     if (!window.confirm('このコメントに悪意を感じますか？\n不適切な表現がある場合、確認の上対処いたします。')) return;
     setReportedPostIds(prev => ({ ...prev, [replyId]: true }));
@@ -213,18 +212,15 @@ export default function FilteredTimeline({
         <>
           {visiblePosts.map((post: any) => {
             const isCommentOpen = activeCommentId === post.id;
-            const postReplies = (replies || []).filter((r: any) => r.parent_id === post.id);
+            const postReplies = (replies || []).filter((r: any) => r && r.parent_id === post.id);
             const isPostReported = !!reportedPostIds[post.id];
 
-            const totalAwesome = 
-              post.authorProfile?.total_awesome ?? 
-              post.authorProfile?.totalAwesomeCount ?? 
-              post.authorProfile?.totalAwesome ?? 0;
-
-            const totalHug = 
-              post.authorProfile?.total_hug ?? 
-              post.authorProfile?.totalHugCount ?? 
-              post.authorProfile?.totalHug ?? 0;
+            // 💡 ぬるぽ防止：authorProfile が null の場合でも絶対に落ちないようにフォールバックを徹底
+            const profile = post.authorProfile || {};
+            const totalAwesome = profile.total_awesome ?? profile.totalAwesomeCount ?? profile.totalAwesome ?? 0;
+            const totalHug = profile.total_hug ?? profile.totalHugCount ?? profile.totalHug ?? 0;
+            const fullName = profile.full_name || "ゲストユーザー";
+            const avatarUrl = profile.avatar_url || defaultAvatar;
 
             const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
 
@@ -233,30 +229,30 @@ export default function FilteredTimeline({
                 {/* ヘッダーエリア */}
                 <div className="flex items-center justify-between mb-3">
                   <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
-                    <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50 dark:border-zinc-800" alt="" />
+                    <img src={avatarUrl} className="w-10 h-10 rounded-full object-cover border border-gray-50 dark:border-zinc-800" alt="" />
                     <div className="flex flex-col">
                       <span className="text-[13px] font-bold text-gray-800 dark:text-zinc-100 flex items-center flex-wrap gap-x-1.5 gap-y-1 transition-colors duration-200">
-                        {post.authorProfile?.full_name}
-                        <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-100/70 dark:border-amber-900/60 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
+                        {fullName}
+                        <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-100/70 dark:border-amber-900/60 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5">
                           Lv.{calculatedLevel}
                         </span>
-                        <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-100/60 dark:border-rose-900/40 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
+                        <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-100/60 dark:border-rose-900/40 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)]">
                           {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
                         </span>
                       </span>
 
                       <div className="flex items-center gap-1.5 mt-0.5">
                         <span className="text-[9px] text-gray-400 dark:text-zinc-500 font-bold transition-colors duration-200">
-                          {new Date(post.created_at).toLocaleDateString('ja-JP', {
+                          {post.created_at ? new Date(post.created_at).toLocaleDateString('ja-JP', {
                             year: 'numeric',
                             month: 'numeric',
                             day: 'numeric',
                             hour: '2-digit',
                             minute: '2-digit'
-                          })}
+                          }) : ''}
                         </span>
                         <span className="opacity-80 transition-colors duration-200" style={{ color: GOLD_COLOR }}>
-                          {post.privacy_level === 'public' ? <Globe size={13} strokeWidth={2.5} /> : <Lock size={13} strokeWidth={2.5} />}
+                          {post.privacy_level === 'friends' ? <Lock size={13} strokeWidth={2.5} /> : <Globe size={13} strokeWidth={2.5} />}
                         </span>
                       </div>
                     </div>
@@ -283,24 +279,24 @@ export default function FilteredTimeline({
                   {post.content}
                 </p>
 
-                {/* メディア表示エリア */}
+                {/* メディア表示 */}
                 {post.video_url ? (
                   <div 
                     onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
-                    className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-black cursor-pointer relative group tutorial-step-media transition-colors duration-200"
+                    className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-black cursor-pointer relative group transition-colors duration-200"
                   >
                     <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
                   </div>
                 ) : post.image_url && (
                   <div 
                     onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
-                    className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-gray-50 dark:bg-zinc-900/50 cursor-pointer relative group tutorial-step-media transition-colors duration-200"
+                    className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-gray-50 dark:bg-zinc-900/50 cursor-pointer relative group transition-colors duration-200"
                   >
                     <img src={post.image_url} alt="" className="w-full h-auto block" loading="lazy" />
                   </div>
                 )}
 
-                {/* ボタン＆アクションエリア */}
+                {/* アクションエリア */}
                 <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100 dark:border-zinc-800/80 transition-colors duration-200">
                   <div className="flex items-center">
                     <ReactionButtons 
@@ -327,28 +323,26 @@ export default function FilteredTimeline({
                   <div className="mt-4 pt-4 border-t border-gray-100 dark:border-zinc-800/80 animate-in fade-in slide-in-from-top-2 transition-colors duration-200">
                     <div className="space-y-3 mb-6">
                       {postReplies.map((reply: any) => {
-                        const replyAwesome = 
-                          reply.authorProfile?.total_awesome ?? 
-                          reply.authorProfile?.totalAwesomeCount ?? 
-                          reply.authorProfile?.totalAwesome ?? 0;
-
-                        const replyHug = 
-                          reply.authorProfile?.total_hug ?? 
-                          reply.authorProfile?.totalHugCount ?? 
-                          reply.authorProfile?.totalHug ?? 0;
+                        if (!reply) return null;
+                        
+                        // 💡 リプライ側の authorProfile 防御
+                        const rProfile = reply.authorProfile || {};
+                        const replyAwesome = rProfile.total_awesome ?? rProfile.totalAwesomeCount ?? rProfile.totalAwesome ?? 0;
+                        const replyHug = rProfile.total_hug ?? rProfile.totalHugCount ?? rProfile.totalHug ?? 0;
+                        const rFullName = rProfile.full_name || "ゲストユーザー";
+                        const rAvatarUrl = rProfile.avatar_url || defaultAvatar;
 
                         const replyCalculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(replyAwesome)) + 1));
                         const isReplyReported = !!reportedPostIds[reply.id];
 
                         return (
                           <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
-                            <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50 dark:border-zinc-800 transition-colors duration-200" alt="" />
+                            <img src={rAvatarUrl} className="w-8 h-8 rounded-full object-cover border border-gray-50 dark:border-zinc-800 transition-colors duration-200" alt="" />
                             <div className="flex-1 bg-gray-50/80 dark:bg-zinc-900/60 p-3 rounded-2xl relative text-zinc-900 dark:text-zinc-100 transition-colors duration-200 border border-transparent dark:border-zinc-800/40">
                               
-                              {/* 💡 修正箇所①：リプライ用のヘッダー管理（名前・Lv・削除＆通報ボタン） */}
                               <div className="flex items-center justify-between mb-1">
                                 <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5" style={{ color: GOLD_COLOR }}>
-                                  <span className="text-zinc-900 dark:text-zinc-100">{reply.authorProfile?.full_name}</span>
+                                  <span className="text-zinc-900 dark:text-zinc-100">{rFullName}</span>
                                   <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-100/70 dark:border-amber-900/60">
                                     Lv.{replyCalculatedLevel}
                                   </span>
@@ -374,7 +368,6 @@ export default function FilteredTimeline({
 
                               <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
 
-                              {/* 💡 修正箇所②：リプライ内の画像・動画（マルチメディア）レンダリング */}
                               {reply.video_url ? (
                                 <div 
                                   onClick={() => setActiveMedia({ type: 'video', url: reply.video_url })}
@@ -391,13 +384,12 @@ export default function FilteredTimeline({
                                 </div>
                               )}
 
-                              {/* 💡 修正箇所③：ReplyActionButtons へのリアクション動的プロパティ結合 */}
                               <div className="mt-2 pt-1 border-t border-gray-100 dark:border-zinc-800/40">
                                 <ReplyActionButtons 
                                   replyId={reply.id}
                                   awesomeCount={reply.awesomeCount || 0}
-                                  hugCount={reply.hugCount || 0} // Hugカウントの受け渡しを追加
-                                  initialMyReaction={reply.myReaction} // 自分がリアクション済みかのステート追加
+                                  hugCount={reply.hugCount || 0} 
+                                  initialMyReaction={reply.myReaction} 
                                   isMyComment={reply.user_id === user?.id}
                                 />
                               </div>
@@ -413,7 +405,6 @@ export default function FilteredTimeline({
             );
           })}
 
-          {/* スクロール位置を監視するためのローダー要素 */}
           {hasMore && (
             <div ref={loaderRef} className="flex justify-center py-6">
               {isLoadingMore ? (
