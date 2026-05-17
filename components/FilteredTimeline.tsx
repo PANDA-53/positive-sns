@@ -203,7 +203,7 @@ export default function FilteredTimeline({
                     className={`flex items-center gap-1 p-2 text-[10px] font-bold transition-all active:scale-95 duration-200 ${isPostReported ? 'text-zinc-700 cursor-not-allowed' : 'text-gray-300 dark:text-zinc-600 hover:text-rose-400 dark:hover:text-rose-400'}`}
                   >
                     <AlertTriangle size={14} strokeWidth={2.5} />
-                    <span>{isPostReported ? '報告済み' : '報告する'}</span>
+                    <span>{isPostReported ? '報告済み' : ''}</span>
                   </button>
                 )}
               </div>
