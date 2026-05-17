@@ -7,10 +7,8 @@ import { useRouter } from 'next/navigation';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "あなたのPUBLIC_KEY";
 
-// 引数に initialSubscription (DBから取得した値) を追加
 export default function NotificationSetter({ userId, initialSubscription }: { userId: string, initialSubscription: any }) {
   const [isSubscribing, setIsSubscribing] = useState(false);
-  // 初期値として、DBにデータがあれば true にする
   const [isSubscribed, setIsSubscribed] = useState(!!initialSubscription);
   const router = useRouter();
 
@@ -19,7 +17,6 @@ export default function NotificationSetter({ userId, initialSubscription }: { us
       if ('serviceWorker' in navigator && 'PushManager' in window) {
         const registration = await navigator.serviceWorker.ready;
         const subscription = await registration.pushManager.getSubscription();
-        // ブラウザ側に購読情報があれば、表示をONにする
         if (subscription) {
           setIsSubscribed(true);
         }
@@ -45,7 +42,7 @@ export default function NotificationSetter({ userId, initialSubscription }: { us
       
       setIsSubscribed(true);
       toast.success("通知を有効にしました");
-      router.refresh(); // サーバー側の状態と同期
+      router.refresh();
     } catch (error) {
       console.error(error);
       toast.error("設定に失敗しました");
@@ -55,19 +52,24 @@ export default function NotificationSetter({ userId, initialSubscription }: { us
   };
 
   return (
-    <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-gray-100 shadow-sm">
+    /* 💡 修正箇所：外枠のカードを他ページ同様の rounded-[1.5rem] と dark:bg-zinc-900 / dark:border-zinc-800 に統一 */
+    <div className="flex items-center justify-between p-4 bg-white dark:bg-zinc-900 rounded-[1.5rem] border border-gray-100 dark:border-zinc-800 shadow-sm transition-colors duration-200">
       <div>
-        <h3 className="text-sm font-bold text-gray-800">プッシュ通知</h3>
-        <p className="text-[10px] text-gray-400">リアクションや返信をリアルタイムでお知らせ</p>
+        {/* 💡 修正箇所：テキストカラーをダークモード時に白ベース（zinc-100 / zinc-500）へ */}
+        <h3 className="text-sm font-bold text-gray-800 dark:text-zinc-100">プッシュ通知</h3>
+        <p className="text-[10px] text-gray-400 dark:text-zinc-500">リアクションや返信をリアルタイムでお知らせ</p>
       </div>
       
+      {/* 💡 修正箇所：ボタンのスタイルを他の機能（FriendButton等）と統一。ENABLED 時はシブい緑トーンへ */}
       <button
         onClick={subscribe}
         disabled={isSubscribing || isSubscribed}
-        className={`px-4 py-2 rounded-full text-[10px] font-black transition-all ${
+        className={`px-4 py-2 rounded-full text-[10px] font-black transition-all border border-transparent min-w-[90px] text-center ${
+          isSubscribing
+            ? 'bg-gray-100 text-gray-400 dark:bg-zinc-800 dark:text-zinc-500 cursor-not-allowed' :
           isSubscribed 
-            ? 'bg-gray-100 text-gray-400 cursor-default' 
-            : 'bg-green-500 text-white shadow-md active:scale-95'
+            ? 'bg-green-100 text-green-600 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50 cursor-default' 
+            : 'bg-blue-500 text-white shadow-sm hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-500 active:scale-95'
         }`}
       >
         {isSubscribing ? "SETTING UP..." : isSubscribed ? "ENABLED" : "ENABLE"}

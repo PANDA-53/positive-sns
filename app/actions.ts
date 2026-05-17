@@ -411,16 +411,22 @@ export async function createPost(formData: FormData): Promise<PostResult> {
     }
   }
 
-  const { error: insertError } = await supabase.from('posts').insert({ 
-    content, 
-    user_id: user.id, 
-    privacy_level: privacyLevel,
-    image_url: imageUrl,
-    video_url: videoUrl,
-    parent_id: parentId 
-  });
+  // .select().single() で作成されたデータを確実に取得
+  const { data: insertedPost, error: insertError } = await supabase
+    .from('posts')
+    .insert({ 
+      content, 
+      user_id: user.id, 
+      privacy_level: privacyLevel,
+      image_url: imageUrl,
+      video_url: videoUrl,
+      parent_id: parentId 
+    })
+    .select()
+    .single();
 
-  if (insertError) {
+  // 💡 エラーハンドリングを厳格にして型を保証
+  if (insertError || !insertedPost) {
     return { isToxic: false, reason: "", suggestions: [], success: false, error: "DB保存失敗" };
   }
 
@@ -432,12 +438,12 @@ export async function createPost(formData: FormData): Promise<PostResult> {
       // 1. WebPush通知
       await sendNotificationToUser(parentPost.user_id, "新しい返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
       
-      // 🛠️ 2. アプリ内通知データの保存
+      // 2. アプリ内通知データの保存（今作ったリプライ自身のIDを指定）
       await createNotification({
         userId: parentPost.user_id,
         notifierId: user.id,
         type: 'reply',
-        postId: parentId
+        postId: insertedPost.id 
       });
     }
   }
@@ -453,19 +459,30 @@ export async function createReply(formData: FormData): Promise<PostResult> {
   const parentId = formData.get('parentId') as string; 
   const { data: { user } } = await supabase.auth.getUser();
   
-  if (!user) return { success: false, isToxic: false, reason: "", suggestions: [] };
+  // 💡 ユーザーがいない場合に確実に PostResult 型を返してエラーを防ぐ
+  if (!user) {
+    return { success: false, isToxic: false, reason: "認証エラー", suggestions: [] };
+  }
 
   const result = await checkAndSuggestContent(content);
   if (result.isToxic) return { ...result, success: false };
 
-  const { error: insertError } = await supabase.from('posts').insert({ 
-    content, 
-    parent_id: parseInt(parentId), 
-    user_id: user.id,
-    privacy_level: 'public'
-  });
+  // .select().single() で作成されたリプライデータを取得
+  const { data: insertedReply, error: insertError } = await supabase
+    .from('posts')
+    .insert({ 
+      content, 
+      parent_id: parseInt(parentId), 
+      user_id: user.id,
+      privacy_level: 'public'
+    })
+    .select()
+    .single();
 
-  if (insertError) return { success: false, isToxic: false, reason: "", suggestions: [] };
+  // 💡 インサート失敗時も確実に PostResult 型をリターンさせて分岐の漏れを無くす
+  if (insertError || !insertedReply) {
+    return { success: false, isToxic: false, reason: "コメントの保存に失敗しました", suggestions: [] };
+  }
 
   const { data: parentPost } = await supabase.from('posts').select('user_id').eq('id', parseInt(parentId)).single();
   if (parentPost && parentPost.user_id !== user.id) {
@@ -474,12 +491,12 @@ export async function createReply(formData: FormData): Promise<PostResult> {
     // 1. WebPush通知
     await sendNotificationToUser(parentPost.user_id, "返信", `${myProfile?.full_name || '誰か'}さんから返信が届きました`, `/`);
     
-    // 🛠️ 2. アプリ内通知データの保存
+    // 2. アプリ内通知データの保存（今作ったリプライ自身のIDを指定）
     await createNotification({
       userId: parentPost.user_id,
       notifierId: user.id,
       type: 'reply',
-      postId: parseInt(parentId)
+      postId: insertedReply.id
     });
   }
 

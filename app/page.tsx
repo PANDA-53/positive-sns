@@ -92,16 +92,43 @@ function MainTimelineContent({ user, viewMode }: MainTimelineContentProps) {
                 <img src={req.sender_profile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-transparent dark:border-zinc-800" alt="" />
                 <span className="font-bold text-xs text-gray-800 dark:text-zinc-200">{req.sender_profile?.full_name}</span>
               </div>
-              <form action={async (formData) => {
-  const { acceptFriendRequest } = await import('./actions');
-  const requesterId = formData.get('requesterId') as string; // ⭕ 値を取り出す
-  if (requesterId) {
-    await acceptFriendRequest(requesterId); // ⭕ 文字列を渡す
-  }
-}}>
-                <input type="hidden" name="requesterId" value={req.user_id} />
-                <button type="submit" className="text-[10px] text-white px-4 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-all hover:opacity-90" style={{ backgroundColor: GOLD_COLOR }}>承認</button>
-              </form>
+              {/* 💡 修正後：formタグを廃止し、ボタン単体のローディング処理と画面更新を実装 */}
+<button
+  type="button"
+  onClick={async (e) => {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+
+    // 1. ボタンを「処理中」の表示にして二重クリックを防ぐ
+    btn.disabled = true;
+    const originalText = btn.innerText;
+    btn.innerText = "承認中...";
+    btn.style.opacity = "0.6";
+    btn.style.cursor = "not-allowed";
+
+    try {
+      // 2. サーバーアクションをインポートして実行
+      const { acceptFriendRequest } = await import('./actions');
+      await acceptFriendRequest(req.user_id);
+      
+      // 3. 完了したら画面をリロード（これで未承認リストからパッと消え、友達リストに入ります）
+      window.location.reload();
+    } catch (error) {
+      console.error("承認に失敗しました:", error);
+      alert("承認処理に失敗しました。もう一度お試しください。");
+      
+      // エラーが起きた場合はボタンを元の状態に戻す
+      btn.disabled = false;
+      btn.innerText = originalText;
+      btn.style.opacity = "1";
+      btn.style.cursor = "pointer";
+    }
+  }}
+  className="text-[10px] text-white px-4 py-1.5 rounded-full font-bold shadow-sm active:scale-95 transition-all hover:opacity-90 flex items-center justify-center min-w-[60px]"
+  style={{ backgroundColor: GOLD_COLOR }}
+>
+  承認
+</button>
             </div>
           ))}
         </section>
