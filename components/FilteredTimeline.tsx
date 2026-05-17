@@ -1,11 +1,11 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { ReactionButtons } from './reaction-buttons'
 import { ReplyActionButtons } from './reply-action-buttons' 
 import { toast } from 'sonner'
-import { deletePost, reportPost } from '@/app/actions' 
+import { deletePost, reportPost, fetchMorePosts } from '@/app/actions' // 💡 fetchMorePosts をインポート
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
 import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, X } from 'lucide-react'
@@ -14,7 +14,6 @@ import { createClient } from '@supabase/supabase-js'
 const defaultAvatar = "https://www.gravatar.com/avatar/?d=mp"
 const GOLD_COLOR = "#B8860B"; 
 
-// 💡 クライアントサイド用のSupabaseインスタンスを作成
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
@@ -36,38 +35,41 @@ export default function FilteredTimeline({
   onSuccess,
   viewModeProp = 'all'
 }: FilteredTimelineProps) {
-  // 💡 リアルタイム更新を反映させるために、投稿データをステート(状態)で管理します
   const [timelinePosts, setTimelinePosts] = useState<any[]>(mainPosts);
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
   const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
   
+  // 💡 無限スクロール用のステートとRefを追加
+  const [hasMore, setHasMore] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const loaderRef = useRef<HTMLDivElement>(null);
+
   const router = useRouter();
 
-  // 親から新しい投稿データ(mainPosts)が降ってきたら同期する
+  // 親から新しい初期データ(最初の20件)が降ってきたら同期・リセットする
   useEffect(() => {
     setTimelinePosts(mainPosts);
+    setHasMore(mainPosts.length >= 20); // 初期件数が20件未満ならこれ以上データはないと判断
   }, [mainPosts]);
 
-  // 💡 【ここが核心！】裏側での削除・追加を24時間リアルタイム監視する仕組み
+  // リアルタイム監視
   useEffect(() => {
     const channel = supabase
       .channel('timeline-realtime-changes')
       .on(
         'postgres_changes',
         {
-          event: '*', // INSERT, UPDATE, DELETE すべてキャッチ
+          event: '*', 
           schema: 'public',
-          table: 'posts', // あなたの投稿テーブル名
+          table: 'posts', 
         },
         (payload) => {
-          // 🚨 裏でGeminiやユーザーによって投稿が削除（DELETE）されたら、画面からも即座に消す！
           if (payload.eventType === 'DELETE') {
             setTimelinePosts((current) => current.filter((p) => p.id !== payload.old.id));
           }
-          // 📝 新しい投稿（INSERT）があったら、タイムラインの先頭に追加する
           if (payload.eventType === 'INSERT') {
-            // 新しい投稿が来たらルーターをリフレッシュして最新データを裏で取る
+            // 新規投稿があった場合は、ルーターをリフレッシュして親コンポーネント側のデータを最新化する
             router.refresh();
           }
         }
@@ -78,6 +80,59 @@ export default function FilteredTimeline({
       supabase.removeChannel(channel);
     };
   }, [router]);
+
+  // 💡 【追加】スクロール最下部を検知して次を読み込むIntersectionObserverのフック
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadNextPosts();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loaderRef.current) {
+      observer.observe(loaderRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [timelinePosts, hasMore, isLoadingMore]);
+
+  // 💡 【追加】次の一覧を裏でロードして合体させる関数
+  const loadNextPosts = async () => {
+    if (isLoadingMore || !hasMore) return;
+    setIsLoadingMore(true);
+
+    try {
+      // 現在の件数を offset として次の20件を取得
+      const currentOffset = timelinePosts.length;
+      const nextPosts = await fetchMorePosts(currentOffset, 20);
+
+      if (!nextPosts || nextPosts.length === 0) {
+        setHasMore(false);
+      } else {
+        setTimelinePosts((current) => {
+          // リアルタイムINSERTなどで既に上部に差し込まれた投稿との重複を完全に防止する
+          const currentIds = new Set(current.map((p) => p.id));
+          const filteredNext = nextPosts.filter((p: any) => !currentIds.has(p.id));
+          
+          if (filteredNext.length === 0) {
+            setHasMore(false);
+            return current;
+          }
+          
+          return [...current, ...filteredNext]; // 既存データの後ろに合体
+        });
+      }
+    } catch (err) {
+      console.error("Failed to load more posts:", err);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  };
 
   if (!Array.isArray(timelinePosts)) {
     return (
@@ -140,166 +195,181 @@ export default function FilteredTimeline({
           No posts to show
         </div>
       ) : (
-        visiblePosts.map((post: any) => {
-          const isCommentOpen = activeCommentId === post.id;
-          const postReplies = (replies || []).filter((r: any) => r.parent_id === post.id);
-          const isPostReported = !!reportedPostIds[post.id];
+        <>
+          {visiblePosts.map((post: any) => {
+            const isCommentOpen = activeCommentId === post.id;
+            const postReplies = (replies || []).filter((r: any) => r.parent_id === post.id);
+            const isPostReported = !!reportedPostIds[post.id];
 
-          const totalAwesome = 
-            post.authorProfile?.total_awesome ?? 
-            post.authorProfile?.totalAwesomeCount ?? 
-            post.authorProfile?.totalAwesome ?? 0;
+            const totalAwesome = 
+              post.authorProfile?.total_awesome ?? 
+              post.authorProfile?.totalAwesomeCount ?? 
+              post.authorProfile?.totalAwesome ?? 0;
 
-          const totalHug = 
-            post.authorProfile?.total_hug ?? 
-            post.authorProfile?.totalHugCount ?? 
-            post.authorProfile?.totalHug ?? 0;
+            const totalHug = 
+              post.authorProfile?.total_hug ?? 
+              post.authorProfile?.totalHugCount ?? 
+              post.authorProfile?.totalHug ?? 0;
 
-          const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
+            const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
 
-          return (
-            /* 💡 修正箇所: 構文エラーになっていたコメントアウトを除去し、確実にダークモードで黒くなるよう dark:bg-zinc-900 / dark:border-zinc-800 を指定 */
-            <div key={`timeline-item-${post.id}`} className="bg-white dark:bg-zinc-900 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-zinc-800 p-5 relative transition-colors duration-200">
-              {/* ヘッダーエリア */}
-              <div className="flex items-center justify-between mb-3">
-                <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
-                  <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50 dark:border-zinc-800" alt="" />
-                  <div className="flex flex-col">
-                    <span className="text-[13px] font-bold text-gray-800 dark:text-zinc-100 flex items-center flex-wrap gap-x-1.5 gap-y-1 transition-colors duration-200">
-                      {post.authorProfile?.full_name}
-                      <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-100/70 dark:border-amber-900/60 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
-                        Lv.{calculatedLevel}
+            return (
+              <div key={`timeline-item-${post.id}`} className="bg-white dark:bg-zinc-900 rounded-[1.5rem] shadow-sm border border-gray-100 dark:border-zinc-800 p-5 relative transition-colors duration-200">
+                {/* ヘッダーエリア */}
+                <div className="flex items-center justify-between mb-3">
+                  <Link href={`/users/${post.user_id}`} className="flex items-center gap-3">
+                    <img src={post.authorProfile?.avatar_url || defaultAvatar} className="w-10 h-10 rounded-full object-cover border border-gray-50 dark:border-zinc-800" alt="" />
+                    <div className="flex flex-col">
+                      <span className="text-[13px] font-bold text-gray-800 dark:text-zinc-100 flex items-center flex-wrap gap-x-1.5 gap-y-1 transition-colors duration-200">
+                        {post.authorProfile?.full_name}
+                        <span className="text-[9px] font-black tracking-tighter text-amber-600 bg-amber-50/70 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-100/70 dark:border-amber-900/60 shadow-[0_1px_1px_rgba(0,0,0,0.01)] ml-0.5 tutorial-step-level">
+                          Lv.{calculatedLevel}
+                        </span>
+                        <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-100/60 dark:border-rose-900/40 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
+                          {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
+                        </span>
                       </span>
-                      <span className="text-[9px] font-bold text-rose-500 bg-rose-50/70 dark:bg-rose-950/40 border border-rose-100/60 dark:border-rose-900/40 px-1.5 py-0.5 rounded-full shadow-[0_1px_1px_rgba(244,63,94,0.01)] tutorial-step-hug">
-                        {totalHug} <span className="text-[8px] font-medium text-rose-400/80">hugged</span>
-                      </span>
-                    </span>
 
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[9px] text-gray-400 dark:text-zinc-500 font-bold transition-colors duration-200">
-                        {new Date(post.created_at).toLocaleDateString('ja-JP', {
-                          year: 'numeric',
-                          month: 'numeric',
-                          day: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                      <span className="opacity-80 transition-colors duration-200" style={{ color: GOLD_COLOR }}>
-                        {post.privacy_level === 'public' ? <Globe size={13} strokeWidth={2.5} /> : <Lock size={13} strokeWidth={2.5} />}
-                      </span>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[9px] text-gray-400 dark:text-zinc-500 font-bold transition-colors duration-200">
+                          {new Date(post.created_at).toLocaleDateString('ja-JP', {
+                            year: 'numeric',
+                            month: 'numeric',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                        <span className="opacity-80 transition-colors duration-200" style={{ color: GOLD_COLOR }}>
+                          {post.privacy_level === 'public' ? <Globe size={13} strokeWidth={2.5} /> : <Lock size={13} strokeWidth={2.5} />}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                </Link>
-                
-                {post.user_id === user?.id ? (
-                  <button onClick={() => handleDelete(post.id)} className="p-2 text-gray-300 dark:text-zinc-600 hover:text-rose-400 dark:hover:text-rose-400 transition-colors duration-200">
-                    <Trash2 size={18} strokeWidth={2} />
-                  </button>
-                ) : (
-                  <button 
-                    onClick={() => handleReportPost(post.id)} 
-                    disabled={isPostReported}
-                    className={`flex items-center gap-1 p-2 text-[10px] font-bold transition-all active:scale-95 duration-200 ${isPostReported ? 'text-zinc-700 cursor-not-allowed' : 'text-gray-300 dark:text-zinc-600 hover:text-rose-400 dark:hover:text-rose-400'}`}
+                  </Link>
+                  
+                  {post.user_id === user?.id ? (
+                    <button onClick={() => handleDelete(post.id)} className="p-2 text-gray-300 dark:text-zinc-600 hover:text-rose-400 dark:hover:text-rose-400 transition-colors duration-200">
+                      <Trash2 size={18} strokeWidth={2} />
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={() => handleReportPost(post.id)} 
+                      disabled={isPostReported}
+                      className={`flex items-center gap-1 p-2 text-[10px] font-bold transition-all active:scale-95 duration-200 ${isPostReported ? 'text-zinc-700 cursor-not-allowed' : 'text-gray-300 dark:text-zinc-600 hover:text-rose-400 dark:hover:text-rose-400'}`}
+                    >
+                      <AlertTriangle size={14} strokeWidth={2.5} />
+                      <span>{isPostReported ? '報告済み' : ''}</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* 投稿本文 */}
+                <p className="text-[15px] text-zinc-900 dark:text-zinc-100 mb-0 whitespace-pre-wrap leading-snug px-1 transition-colors duration-200">
+                  {post.content}
+                </p>
+
+                {/* メディア表示エリア */}
+                {post.video_url ? (
+                  <div 
+                    onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
+                    className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-black cursor-pointer relative group tutorial-step-media transition-colors duration-200"
                   >
-                    <AlertTriangle size={14} strokeWidth={2.5} />
-                    <span>{isPostReported ? '報告済み' : ''}</span>
+                    <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
+                  </div>
+                ) : post.image_url && (
+                  <div 
+                    onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
+                    className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-gray-50 dark:bg-zinc-900/50 cursor-pointer relative group tutorial-step-media transition-colors duration-200"
+                  >
+                    <img src={post.image_url} alt="" className="w-full h-auto block" loading="lazy" />
+                  </div>
+                )}
+
+                {/* ボタン＆アクションエリア */}
+                <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100 dark:border-zinc-800/80 transition-colors duration-200">
+                  <div className="flex items-center">
+                    <ReactionButtons 
+                      postId={post.id} 
+                      awesomeCount={post.awesomeCount} 
+                      hugCount={post.hugCount} 
+                      initialMyReaction={post.myReaction} 
+                      isOwnPost={post.user_id === user?.id} 
+                    />
+                  </div>
+                  
+                  <button 
+                    onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} 
+                    className="flex items-center gap-2 text-gray-400 dark:text-zinc-600 hover:text-amber-600 dark:hover:text-amber-500 transition-colors duration-200"
+                    style={isCommentOpen ? { color: GOLD_COLOR } : {}}
+                  >
+                    <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? GOLD_COLOR : "none"} />
+                    <span className="text-xs font-bold leading-none">{postReplies.length}</span>
                   </button>
+                </div>
+
+                {/* リプライエリア */}
+                {isCommentOpen && (
+                  <div className="mt-4 pt-4 border-t border-gray-100 dark:border-zinc-800/80 animate-in fade-in slide-in-from-top-2 transition-colors duration-200">
+                    <div className="space-y-3 mb-6">
+                      {postReplies.map((reply: any) => {
+                        const replyAwesome = 
+                          reply.authorProfile?.total_awesome ?? 
+                          reply.authorProfile?.totalAwesomeCount ?? 
+                          reply.authorProfile?.totalAwesome ?? 0;
+
+                        const replyHug = 
+                          reply.authorProfile?.total_hug ?? 
+                          reply.authorProfile?.totalHugCount ?? 
+                          reply.authorProfile?.totalHug ?? 0;
+
+                        const replyCalculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(replyAwesome)) + 1));
+
+                        return (
+                          <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
+                            <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50 dark:border-zinc-800 transition-colors duration-200" alt="" />
+                            <div className="flex-1 bg-gray-50/80 dark:bg-zinc-900/60 p-3 rounded-2xl relative text-zinc-900 dark:text-zinc-100 transition-colors duration-200 border border-transparent dark:border-zinc-800/40">
+                              <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-1.5" style={{ color: GOLD_COLOR }}>
+                                <span className="text-zinc-900 dark:text-zinc-100">{reply.authorProfile?.full_name}</span>
+                                <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-100/70 dark:border-amber-900/60">
+                                  Lv.{replyCalculatedLevel}
+                                </span>
+                                <span className="text-[8px] font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 px-1.5 py-0.2 rounded-full">
+                                  {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
+                                </span>
+                              </span>
+                              <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
+                              <ReplyActionButtons 
+                                replyId={reply.id}
+                                awesomeCount={reply.awesomeCount}
+                                initialIsAwesome={reply.myReaction === 'awesome'}
+                                isMyComment={reply.user_id === user?.id}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <ReplyForm parentId={post.id} onSuccess={() => { if (onSuccess) onSuccess(); }} />
+                  </div>
                 )}
               </div>
+            );
+          })}
 
-              {/* 投稿本文 */}
-              <p className="text-[15px] text-zinc-900 dark:text-zinc-100 mb-0 whitespace-pre-wrap leading-snug px-1 transition-colors duration-200">
-                {post.content}
-              </p>
-
-              {/* メディア表示エリア */}
-              {post.video_url ? (
-                <div 
-                  onClick={() => setActiveMedia({ type: 'video', url: post.video_url })}
-                  className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-black cursor-pointer relative group tutorial-step-media transition-colors duration-200"
-                >
-                  <video src={post.video_url} muted loop autoPlay playsInline className="w-full h-auto block pointer-events-none" />
-                </div>
-              ) : post.image_url && (
-                <div 
-                  onClick={() => setActiveMedia({ type: 'image', url: post.image_url })}
-                  className="mt-3 rounded-xl overflow-hidden border border-gray-100 dark:border-zinc-800 shadow-sm bg-gray-50 dark:bg-zinc-900/50 cursor-pointer relative group tutorial-step-media transition-colors duration-200"
-                >
-                  <img src={post.image_url} alt="" className="w-full h-auto block" loading="lazy" />
-                </div>
-              )}
-
-              {/* ボタン＆アクションエリア */}
-              <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-gray-100 dark:border-zinc-800/80 transition-colors duration-200">
-                <div className="flex items-center">
-                  <ReactionButtons 
-                    postId={post.id} 
-                    awesomeCount={post.awesomeCount} 
-                    hugCount={post.hugCount} 
-                    initialMyReaction={post.myReaction} 
-                    isOwnPost={post.user_id === user?.id} 
-                  />
-                </div>
-                
-                <button 
-                  onClick={() => setActiveCommentId(isCommentOpen ? null : post.id)} 
-                  className="flex items-center gap-2 text-gray-400 dark:text-zinc-600 hover:text-amber-600 dark:hover:text-amber-500 transition-colors duration-200"
-                  style={isCommentOpen ? { color: GOLD_COLOR } : {}}
-                >
-                  <MessageCircle size={18} strokeWidth={2} fill={isCommentOpen ? GOLD_COLOR : "none"} />
-                  <span className="text-xs font-bold leading-none">{postReplies.length}</span>
-                </button>
-              </div>
-
-              {/* リプライエリア */}
-              {isCommentOpen && (
-                <div className="mt-4 pt-4 border-t border-gray-100 dark:border-zinc-800/80 animate-in fade-in slide-in-from-top-2 transition-colors duration-200">
-                  <div className="space-y-3 mb-6">
-                    {postReplies.map((reply: any) => {
-                      const replyAwesome = 
-                        reply.authorProfile?.total_awesome ?? 
-                        reply.authorProfile?.totalAwesomeCount ?? 
-                        reply.authorProfile?.totalAwesome ?? 0;
-
-                      const replyHug = 
-                        reply.authorProfile?.total_hug ?? 
-                        reply.authorProfile?.totalHugCount ?? 
-                        reply.authorProfile?.totalHug ?? 0;
-
-                      const replyCalculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(replyAwesome)) + 1));
-
-                      return (
-                        <div key={`reply-${reply.id}`} className="flex gap-3 pl-2">
-                          <img src={reply.authorProfile?.avatar_url || defaultAvatar} className="w-8 h-8 rounded-full object-cover border border-gray-50 dark:border-zinc-800 transition-colors duration-200" alt="" />
-                          <div className="flex-1 bg-gray-50/80 dark:bg-zinc-900/60 p-3 rounded-2xl relative text-zinc-900 dark:text-zinc-100 transition-colors duration-200 border border-transparent dark:border-zinc-800/40">
-                            <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5 mb-1.5" style={{ color: GOLD_COLOR }}>
-                              <span className="text-zinc-900 dark:text-zinc-100">{reply.authorProfile?.full_name}</span>
-                              <span className="text-[8px] font-black tracking-tighter text-amber-600 bg-amber-50/90 dark:bg-amber-950/40 px-1.5 py-0.2 rounded border border-amber-100/70 dark:border-amber-900/60">
-                                Lv.{replyCalculatedLevel}
-                              </span>
-                              <span className="text-[8px] font-bold text-rose-500 bg-rose-50 dark:bg-rose-950/40 border border-rose-100 dark:border-rose-900/40 px-1.5 py-0.2 rounded-full">
-                                {replyHug} <span className="text-[7px] font-medium text-rose-400/80">hugged</span>
-                              </span>
-                            </span>
-                            <p className="text-[13px] whitespace-pre-wrap leading-relaxed">{reply.content}</p>
-                            <ReplyActionButtons 
-                              replyId={reply.id}
-                              awesomeCount={reply.awesomeCount}
-                              initialIsAwesome={reply.myReaction === 'awesome'}
-                              isMyComment={reply.user_id === user?.id}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <ReplyForm parentId={post.id} onSuccess={() => { if (onSuccess) onSuccess(); }} />
-                </div>
+          {/* 💡 【追加】スクロール位置を監視するためのローダー要素 */}
+          {hasMore && (
+            <div ref={loaderRef} className="flex justify-center py-6">
+              {isLoadingMore ? (
+                /* ダークモードに対応したゴールドスピナー */
+                <div className="w-6 h-6 border-2 border-[#B8860B] border-t-transparent rounded-full animate-spin" />
+              ) : (
+                <span className="text-[10px] font-bold tracking-widest text-zinc-400 dark:text-zinc-600 uppercase">
+                  Loading More Posts...
+                </span>
               )}
             </div>
-          );
-        })
+          )}
+        </>
       )}
 
       {/* フルスクリーンポップアップ */}

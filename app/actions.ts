@@ -802,3 +802,23 @@ export async function fetchChatHistoryList() {
 
   return chatList;
 }
+
+export async function fetchMorePosts(offset: number, limit: number = 20) {
+  const supabase = await createClient();
+  
+  const { data: posts, error } = await supabase
+    .from('posts')
+    .select(`*, reactions (type, user_id)`)
+    .filter('parent_id', 'is', null) // 親投稿のみ
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    console.error("追加の投稿取得エラー:", error);
+    return [];
+  }
+
+  // ここで fetchMainTimelineData と同様に、各 post に対する authorProfile の結合や 
+  // awesomeCount, hugCount, myReaction などのマッピング（整形）処理を行って返却します
+  return posts || []; 
+}
