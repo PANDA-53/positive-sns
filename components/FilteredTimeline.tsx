@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { deletePost, reportPost, reportReply, fetchMorePosts } from '@/app/actions'
 import { useRouter } from 'next/navigation'
 import ReplyForm from './ReplyForm'
+import { BottomNav } from './bottom-nav' 
 import { Globe, Lock, MessageCircle, Trash2, AlertTriangle, X } from 'lucide-react'
 import { createClient } from '@supabase/supabase-js'
 
@@ -23,7 +24,7 @@ interface FilteredTimelineProps {
   replies: any[];
   user: any;
   friendIds: string[];
-  onSuccess?: () => void; 
+  onSuccess?: (...args: any[]) => void; 
   viewModeProp?: 'all' | 'friends'; 
 }
 
@@ -32,17 +33,17 @@ export default function FilteredTimeline({
   replies = [], 
   user, 
   friendIds = [], 
-  onSuccess,
+  onSuccess, 
   viewModeProp = 'all'
 }: FilteredTimelineProps) {
-  // 初期値が undefined や null で来ても絶対に落ちないように空配列でフォールバック
-  const [timelinePosts, setTimelinePosts] = useState<any[]>(Array.isArray(mainPosts) ? mainPosts : []);
+  // 💡 解決策：無限スクロールで「追加読み込みした投稿」だけをローカルStateで管理する
+  const [extraPosts, setExtraPosts] = useState<any[]>([]);
+  const [timelineReplies, setTimelineReplies] = useState<any[]>(Array.isArray(replies) ? replies : []);
+  
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
   const [reportedPostIds, setReportedPostIds] = useState<Record<number, boolean>>({});
   const [activeMedia, setActiveMedia] = useState<{ type: 'image' | 'video'; url: string } | null>(null);
   
-  // 💡 追加：現在どのリプライに対して返信しようとしているかを保持するState
-  // 各親投稿（post.id）ごとに個別に返信先を設定・管理できるようにオブジェクトのマップ型にします
   const [activeReplyTargets, setActiveReplyTargets] = useState<Record<number, { id: number; name: string } | null>>({});
 
   const [hasMore, setHasMore] = useState(true);
@@ -51,13 +52,33 @@ export default function FilteredTimeline({
 
   const router = useRouter();
 
-  useEffect(() => {
-    const safePosts = Array.isArray(mainPosts) ? mainPosts : [];
-    setTimelinePosts(safePosts);
-    setHasMore(safePosts.length >= 20);
-  }, [mainPosts]);
+  // 💡 親から届く本物の mainPosts と、スクロールで追加した extraPosts を合流させる（重複はIDで自動除去）
+  const safeMainPosts = Array.isArray(mainPosts) ? mainPosts : [];
+  const mergedPosts = React.useMemo(() => {
+    const seenIds = new Set(safeMainPosts.filter(Boolean).map(p => p.id));
+    const filteredExtra = extraPosts.filter(p => p && !seenIds.has(p.id));
+    return [...safeMainPosts, ...filteredExtra];
+  }, [safeMainPosts, extraPosts]);
 
-  // リアルタイム監視
+  // 親から届いた初期件数に基づいて、まだ次があるかを判定
+  useEffect(() => {
+    if (safeMainPosts.length < 20) {
+      setHasMore(false);
+    } else {
+      setHasMore(true);
+    }
+  }, [safeMainPosts.length]);
+
+  // ページ切り替え（Public/Friends）が発生したら追加分のログをリセット
+  useEffect(() => {
+    setExtraPosts([]);
+  }, [viewModeProp]);
+
+  useEffect(() => {
+    setTimelineReplies(Array.isArray(replies) ? replies : []);
+  }, [replies]);
+
+  // リアルタイム監視（削除検知のみ残し、INSERT時はTanStack Queryのinvalidate等に任せるか、必要に応じて動作）
   useEffect(() => {
     const channel = supabase
       .channel('timeline-realtime-changes')
@@ -70,9 +91,7 @@ export default function FilteredTimeline({
         },
         (payload) => {
           if (payload.eventType === 'DELETE') {
-            setTimelinePosts((current) => current.filter((p) => p && p.id !== payload.old.id));
-          }
-          if (payload.eventType === 'INSERT') {
+            setExtraPosts((current) => current.filter((p) => p && p.id !== payload.old.id));
             router.refresh();
           }
         }
@@ -102,21 +121,21 @@ export default function FilteredTimeline({
     }
 
     return () => observer.disconnect();
-  }, [timelinePosts, hasMore, isLoadingMore]);
+  }, [mergedPosts, hasMore, isLoadingMore]);
 
   const loadNextPosts = async () => {
     if (isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
 
     try {
-      const currentOffset = timelinePosts.length;
+      const currentOffset = mergedPosts.length;
       const nextPosts = await fetchMorePosts(currentOffset, 20);
 
       if (!nextPosts || nextPosts.length === 0) {
         setHasMore(false);
       } else {
-        setTimelinePosts((current) => {
-          const currentIds = new Set(current.filter(Boolean).map((p) => p.id));
+        setExtraPosts((current) => {
+          const currentIds = new Set(mergedPosts.filter(Boolean).map((p) => p.id));
           const filteredNext = nextPosts.filter((p: any) => p && !currentIds.has(p.id));
           
           if (filteredNext.length === 0) {
@@ -134,17 +153,8 @@ export default function FilteredTimeline({
     }
   };
 
-  if (!Array.isArray(timelinePosts)) {
-    return (
-      <div className="text-center py-10 text-[10px] font-bold uppercase tracking-widest" style={{ color: GOLD_COLOR }}>
-        Syncing Timeline...
-      </div>
-    );
-  }
-
-  // 表示可能な投稿をフィルタリング（安全性を強化）
   const safeFriendIds = Array.isArray(friendIds) ? friendIds : [];
-  const visiblePosts = timelinePosts.filter((post: any) => {
+  const visiblePosts = mergedPosts.filter((post: any) => {
     if (!post || !post.id) return false;
     const hasPermission = 
       post.privacy_level === 'public' || 
@@ -165,8 +175,9 @@ export default function FilteredTimeline({
     try {
       await deletePost(formData);
       toast.success('削除しました');
+      setTimelineReplies((current) => current.filter((r) => r && r.id !== postId));
+      setExtraPosts((current) => current.filter((p) => p && p.id !== postId));
       router.refresh();
-      if (onSuccess) onSuccess();
     } catch (error) {
       toast.error('削除に失敗しました');
     }
@@ -206,6 +217,35 @@ export default function FilteredTimeline({
     }
   };
 
+  const handleReplySuccess = (
+    postId: number, 
+    targetReply: { id: number; name: string } | null,
+    submittedContent: string,
+    mediaUrl: string | null,
+    isVideo: boolean
+  ) => {
+    const confirmedReply = {
+      id: Date.now(), 
+      parent_id: postId,
+      user_id: user?.id,
+      content: submittedContent,
+      video_url: isVideo ? mediaUrl : null,
+      image_url: !isVideo ? mediaUrl : null,
+      created_at: new Date().toISOString(),
+      replyToUser: targetReply ? targetReply.name : null,
+      authorProfile: {
+        full_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || "あなた",
+        avatar_url: user?.user_metadata?.avatar_url || defaultAvatar,
+        total_awesome: user?.user_metadata?.total_awesome || 0,
+        total_hug: user?.user_metadata?.total_hug || 0
+      }
+    };
+
+    setTimelineReplies((current) => [...current, confirmedReply]);
+    setActiveReplyTargets(prev => ({ ...prev, [postId]: null }));
+    router.refresh();
+  };
+
   return (
     <div className="space-y-4 pb-24" id="tutorial-step-welcome">
       {visiblePosts.length === 0 ? (
@@ -216,10 +256,9 @@ export default function FilteredTimeline({
         <>
           {visiblePosts.map((post: any) => {
             const isCommentOpen = activeCommentId === post.id;
-            const postReplies = (replies || []).filter((r: any) => r && r.parent_id === post.id);
+            const postReplies = (timelineReplies || []).filter((r: any) => r && r.parent_id === post.id);
             const isPostReported = !!reportedPostIds[post.id];
 
-            // ぬるぽ防止：authorProfile が null の場合でも絶対に落ちないようにフォールバックを徹底
             const profile = post.authorProfile || {};
             const totalAwesome = profile.total_awesome ?? profile.totalAwesomeCount ?? profile.totalAwesome ?? 0;
             const totalHug = profile.total_hug ?? profile.totalHugCount ?? profile.totalHug ?? 0;
@@ -329,7 +368,6 @@ export default function FilteredTimeline({
                       {postReplies.map((reply: any) => {
                         if (!reply) return null;
                         
-                        // リプライ側の authorProfile 防御
                         const rProfile = reply.authorProfile || {};
                         const replyAwesome = rProfile.total_awesome ?? rProfile.totalAwesomeCount ?? rProfile.totalAwesome ?? 0;
                         const replyHug = rProfile.total_hug ?? rProfile.totalHugCount ?? rProfile.totalHug ?? 0;
@@ -348,7 +386,6 @@ export default function FilteredTimeline({
                                 <span className="text-[11px] font-bold flex items-center flex-wrap gap-x-1.5 gap-y-0.5" style={{ color: GOLD_COLOR }}>
                                   <span className="text-zinc-900 dark:text-zinc-100">{rFullName}</span>
                                   
-                                  {/* 💡 追加：もしこのリプライが「特定の返信(reply_to_id)」を持っていたら誰宛てかを表示する */}
                                   {reply.replyToUser && (
                                     <span className="text-[10px] text-zinc-400 font-medium ml-1 flex items-center gap-0.5">
                                       ▶︎ <span className="text-amber-600/90 dark:text-amber-500 font-bold">@{reply.replyToUser}</span>
@@ -405,7 +442,6 @@ export default function FilteredTimeline({
                                   isMyComment={reply.user_id === user?.id}
                                 />
 
-                                {/* 💡 追加：「返信する」ボタン。押すとこのリプライデータをその親投稿（post.id）の返信先としてStateに記憶する */}
                                 <button
                                   onClick={() => setActiveReplyTargets(prev => ({
                                     ...prev,
@@ -422,15 +458,13 @@ export default function FilteredTimeline({
                       })}
                     </div>
 
-                    {/* 💡 修正：ReplyFormへ返信先情報とその解除処理をバインドして引き渡す */}
                     <ReplyForm 
                       parentId={post.id} 
                       replyTarget={activeReplyTargets[post.id] || null}
                       onCancelReply={() => setActiveReplyTargets(prev => ({ ...prev, [post.id]: null }))}
-                      onSuccess={() => { 
-                        setActiveReplyTargets(prev => ({ ...prev, [post.id]: null }));
-                        if (onSuccess) onSuccess(); 
-                      }} 
+                      onSuccess={(content, mediaUrl, isVideo) => 
+                        handleReplySuccess(post.id, activeReplyTargets[post.id] || null, content, mediaUrl, isVideo)
+                      } 
                     />
                   </div>
                 )}
@@ -450,6 +484,14 @@ export default function FilteredTimeline({
             </div>
           )}
         </>
+      )}
+
+      {/* ボトムナビ */}
+      {user?.id && (
+        <BottomNav 
+          currentUserId={user.id} 
+          onPostSuccess={onSuccess} 
+        />
       )}
 
       {/* フルスクリーンポップアップ */}

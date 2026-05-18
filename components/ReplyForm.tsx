@@ -12,12 +12,12 @@ interface PostResult {
   success?: boolean;
 }
 
-// 💡 拡張：FilteredTimeline から渡される Props の型を定義
+// 💡 Propsの onSuccess がテキストとプレビュー情報を受け取れるように型を拡張
 interface ReplyFormProps {
   parentId: number;
-  onSuccess: () => void;
-  replyTarget?: { id: number; name: string } | null; // 誰への返信か
-  onCancelReply?: () => void; // 返信先をキャンセルする関数
+  onSuccess: (content: string, mediaUrl: string | null, isVideo: boolean) => void;
+  replyTarget?: { id: number; name: string } | null;
+  onCancelReply?: () => void;
 }
 
 const GOLD_COLOR = "#B8860B";
@@ -37,6 +37,7 @@ export default function ReplyForm({
     suggestions: [],
   });
 
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleReset = () => {
@@ -45,7 +46,6 @@ export default function ReplyForm({
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
     setMediaPreview(null);
     setToxicInfo({ isToxic: false, suggestions: [] });
-    // リセット時に返信ターゲットもクリア
     if (onCancelReply) onCancelReply();
   };
 
@@ -57,9 +57,7 @@ export default function ReplyForm({
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     if (mediaPreview) URL.revokeObjectURL(mediaPreview);
-
     setMediaFile(file);
     setMediaPreview(URL.createObjectURL(file));
   };
@@ -82,7 +80,6 @@ export default function ReplyForm({
       formData.append("media", mediaFile);
     }
     
-    // 💡 重要：もし特定の返信に対するアンカー（replyTarget）があれば、そのIDを付与する
     if (replyTarget) {
       formData.append("replyToId", replyTarget.id.toString());
     }
@@ -98,13 +95,17 @@ export default function ReplyForm({
         }
 
         if (result.success) {
-          handleReset();
           toast.success("返信しました");
-
-          setTimeout(() => {
-            if (onSuccess) onSuccess();
-            window.location.reload();
-          }, 300);
+          
+          // 💡 AI判定を無事通過したので、親コンポーネントに入力内容を渡して即時反映させる
+          const isVideo = mediaFile ? mediaFile.type.startsWith("video/") : false;
+          if (onSuccess) {
+            onSuccess(content, mediaPreview, isVideo);
+          }
+          
+          // 親への引き渡しが終わってからフォームをリセット
+          handleReset();
+          router.refresh();
         } else {
           toast.error("送信に失敗しました");
         }
@@ -116,7 +117,6 @@ export default function ReplyForm({
 
   return (
     <div className="mt-2 space-y-2">
-      {/* 💡 追加：特定のユーザーへの返信中バッジ */}
       {replyTarget && (
         <div className="flex items-center justify-between bg-amber-50/70 dark:bg-amber-950/20 border border-amber-100/70 dark:border-amber-900/40 rounded-xl px-3 py-1.5 animate-in fade-in slide-in-from-bottom-1 duration-200">
           <span className="text-[11px] text-amber-800 dark:text-amber-400 font-bold flex items-center gap-1">
@@ -134,7 +134,6 @@ export default function ReplyForm({
         </div>
       )}
 
-      {/* 言い換え案エリア */}
       {toxicInfo.isToxic && (
         <div className="bg-gradient-to-br from-amber-50 to-white dark:from-amber-950/20 dark:to-zinc-900 border border-amber-100 dark:border-amber-900/40 p-3 rounded-2xl animate-in fade-in slide-in-from-top-1">
           <p className="text-[10px] font-bold text-amber-800 dark:text-amber-400 mb-2 flex items-center gap-2">
@@ -166,13 +165,11 @@ export default function ReplyForm({
                 ? "bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/50" 
                 : "bg-gray-50 dark:bg-zinc-800/50 border-transparent focus:border-gray-200 dark:focus:border-zinc-700"
             } text-black dark:text-zinc-100 placeholder-gray-400 dark:placeholder-zinc-500`}
-            // 💡 返信中相手の名前をプレースホルダーにも反映
             placeholder={replyTarget ? `${replyTarget.name} さんへ優しいメッセージを...` : "優しい返信を送りましょう"}
             rows={2}
             disabled={isPending}
           />
 
-          {/* 入力欄左下のメディア選択ボタン */}
           <div className="absolute left-3 bottom-3 flex items-center gap-2">
             <button
               type="button"
@@ -193,7 +190,6 @@ export default function ReplyForm({
           </div>
         </div>
 
-        {/* メディアプレビューエリア */}
         {mediaPreview && mediaFile && (
           <div className="relative inline-block max-w-[200px] rounded-xl overflow-hidden border border-gray-200 dark:border-zinc-700 bg-gray-100 dark:bg-zinc-800">
             {mediaFile.type.startsWith("video/") ? (
@@ -211,7 +207,6 @@ export default function ReplyForm({
           </div>
         )}
         
-        {/* ボタンエリア */}
         <div className="flex flex-row justify-end items-center gap-4 mt-1">
           <button
             type="button"

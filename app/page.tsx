@@ -16,27 +16,64 @@ const GOLD_COLOR = "#B8860B";
 
 interface MainTimelineContentProps {
   user: any;
+  profile: any; 
   viewMode: 'all' | 'friends';
 }
 
-function MainTimelineContent({ user, viewMode }: MainTimelineContentProps) {
+function MainTimelineContent({ user, profile, viewMode }: MainTimelineContentProps) {
   const queryClient = useQueryClient();
   const router = useRouter();
 
-  // 💡 修正箇所：TanStack Query のキャッシュ引き継ぎ方法を安全な「keepPreviousData」へ修正します
+  // TanStack Query でタイムラインデータを管理
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['main-timeline', user?.id],
     queryFn: () => fetchMainTimelineData(user.id),
     staleTime: 1000 * 60 * 5,
     enabled: !!user?.id,
-    placeholderData: keepPreviousData, // 最新の安全な方法に差し替え
+    placeholderData: keepPreviousData,
   })
 
-  const handlePostSuccess = async () => {
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    queryClient.removeQueries({ queryKey: ['main-timeline', user?.id] });
-    await refetch();
-    router.refresh();
+  // 💡 判定通過後の本物データをキャッシュの先頭に「0秒」で挿入するロジック
+  const handlePostSuccess = (
+    content: string, 
+    mediaUrl: string | null, 
+    isVideo: boolean, 
+    privacyLevel: "public" | "friends"
+  ) => {
+    // 💡 profilesテーブルから取得した実際のフルネームとアバターを適用
+    const newPost = {
+      id: Date.now(), // 一時的な仮のID
+      content: content,
+      video_url: isVideo ? mediaUrl : null,
+      image_url: !isVideo ? mediaUrl : null,
+      privacy_level: privacyLevel,
+      created_at: new Date().toISOString(),
+      user_id: user?.id,
+      awesomeCount: 0,
+      hugCount: 0,
+      myReaction: null,
+      authorProfile: {
+        full_name: profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "マイユーザー",
+        avatar_url: profile?.avatar_url || user?.user_metadata?.avatar_url || defaultAvatar,
+        total_awesome: profile?.total_awesome || 0,
+        total_hug: profile?.total_hug || 0
+      }
+    };
+
+    // 1. まずローカルのキャッシュ（画面表示）の先頭に即座に追加
+    queryClient.setQueryData(['main-timeline', user?.id], (oldData: any) => {
+      if (!oldData) return { mainPosts: [newPost], replies: [], friendIds: [], acceptedFriends: [], pendingRequests: [] };
+      return {
+        ...oldData,
+        mainPosts: [newPost, ...(Array.isArray(oldData.mainPosts) ? oldData.mainPosts : [])]
+      };
+    });
+
+    // ❌ 修正：ここで router.refresh() を呼ぶと、Supabaseの反映完了前に古いデータをサーバーから引き直してキャッシュを上書きしてしまうため削除
+    // 💡 代わりに、裏側でバックグラウンド再フェッチを要求して、Supabaseから正式なデータ（本物のIDなど）が届いたら静かに差し替えるようにします
+    setTimeout(() => {
+      queryClient.invalidateQueries({ queryKey: ['main-timeline', user?.id] });
+    }, 1000); // 1秒ほど猶予を持たせて裏側でフェッチ
   };
 
   if (isLoading) {
@@ -55,7 +92,7 @@ function MainTimelineContent({ user, viewMode }: MainTimelineContentProps) {
     )
   }
 
-  // 💡 ぬるぽ防止の徹底フォールバック
+  // ぬるぽ防止の徹底フォールバック
   const mainPosts = Array.isArray(data?.mainPosts) ? data.mainPosts : [];
   const replies = Array.isArray(data?.replies) ? data.replies : [];
   const friendIds = Array.isArray(data?.friendIds) ? data.friendIds : [];
@@ -123,13 +160,13 @@ function MainTimelineContent({ user, viewMode }: MainTimelineContentProps) {
         </section>
       )}
 
-      {/* 💡 データが空配列だったとしても、コンポーネント自体は落とさずに表示処理に回す */}
+      {/* タイムライン表示セクション */}
       <FilteredTimeline 
         mainPosts={mainPosts} 
         replies={replies} 
         user={user} 
         friendIds={friendIds} 
-        onSuccess={handlePostSuccess}
+        onSuccess={handlePostSuccess} 
         viewModeProp={viewMode} 
       />
     </div>
@@ -230,7 +267,7 @@ export default function Index() {
 
       <div className="max-w-2xl mx-auto px-4 mt-4">
         <PullToRefresh>
-          <MainTimelineContent user={user} viewMode={viewMode} />
+          <MainTimelineContent user={user} profile={profile} viewMode={viewMode} />
         </PullToRefresh>
       </div>
     </main>

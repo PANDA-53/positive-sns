@@ -20,13 +20,13 @@ export default function AppTutorial() {
         progressText: '{{current}} / {{total}}',
         nextBtnText: '次へ →',
         prevBtnText: '← 戻る',
-        doneBtnText: '冒険を始める！',
+        doneBtnText: '優しい世界へ',
         
         steps: [
           {
             element: '#tutorial-step-welcome',
             popover: {
-              title: '<span style="color: #B8860B; font-weight: 900;">🎉 ようこそ新しいコミュニティへ！</span>',
+              title: '<span style="color: #B8860B; font-weight: 900;">ようこそ新しいコミュニティへ！</span>',
               description: 'ここは、お互いの素敵な瞬間をリスペクトし合い、温かく繋がる場所です。簡単な歩き方をご案内します！',
               side: "bottom",
               align: 'start'
@@ -35,7 +35,7 @@ export default function AppTutorial() {
           {
             element: '.tutorial-step-level',
             popover: {
-              title: '<span style="color: #d97706; font-weight: 900;">📈 経験値＆レベルシステム</span>',
+              title: '<span style="color: #d97706; font-weight: 900;">経験値＆レベルシステム</span>',
               description: 'あなたの投稿に「Awesome」が集まると、独自のルート（平方根）計算でレベルが上がっていきます。レベルが高い人は一目で分かります！',
               side: "bottom",
               align: 'start'
@@ -44,7 +44,7 @@ export default function AppTutorial() {
           {
             element: '.tutorial-step-hug',
             popover: {
-              title: '<span style="color: #f43f5e; font-weight: 900;">❤️ 寄り添うカルチャー「Hug」</span>',
+              title: '<span style="color: #f43f5e; font-weight: 900;">寄り添うカルチャー「Hug」</span>',
               description: '通常のいいねだけじゃ足りない、温かい共感や応援の気持ちは「Hug」で伝えましょう。お互いのプロフィールに勲章として蓄積されます。',
               side: "bottom",
               align: 'start'
@@ -53,7 +53,7 @@ export default function AppTutorial() {
           {
             element: '.tutorial-step-media',
             popover: {
-              title: '<span style="color: #B8860B; font-weight: 900;">🎬 タップで臨場感マックス！</span>',
+              title: '<span style="color: #B8860B; font-weight: 900;">タップで臨場感マックス！</span>',
               description: 'タイムラインの画像や動画をタップすると、映画館のようなフルスクリーン・シネマビューアが起動します。大画面でじっくり作品を楽しみましょう！',
               side: "top",
               align: 'center'
@@ -62,7 +62,7 @@ export default function AppTutorial() {
           {
             element: '#tutorial-step-profile-nav',
             popover: {
-              title: '<span style="color: #854d0e; font-weight: 900;">👤 プロフィールを整えよう</span>',
+              title: '<span style="color: #854d0e; font-weight: 900;">プロフィールを整えよう</span>',
               description: '準備ができたら、まずはあなたの自己紹介やアバターを設定しにいきましょう。さあ、コミュニティを楽しんでください！',
               side: "bottom",
               align: 'end'

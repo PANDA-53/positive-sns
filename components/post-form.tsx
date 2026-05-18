@@ -16,9 +16,10 @@ interface PostResult {
   success?: boolean;
 }
 
+// 💡 修正：onSuccess がテキスト、メディアURL、動画フラグ、公開範囲を受け取れるように拡張
 interface PostFormProps {
   parentId?: number;
-  onSuccess?: () => void;
+  onSuccess?: (content: string, mediaUrl: string | null, isVideo: boolean, privacyLevel: "public" | "friends") => void;
 }
 
 const GOLD_COLOR = "#B8860B";
@@ -84,18 +85,19 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
       }
 
       if (result.success) {
-        handleReset();
-        
         // 🛠️ 成功時のトーストを表示
         toast.success(isReply ? "返信しました！" : "投稿しました！");
 
-        // 🛠️ 最も確実にデータベースの最新データを反映しタイムラインを更新するため、画面をリロード
-        setTimeout(() => {
-          if (onSuccess) {
-            onSuccess();
-          }
-          window.location.reload(); 
-        }, 300); // トーストアニメーションが少し見えるように一瞬だけ待ってリロード
+        // 💡 修正：AI判定を無事に通過したので、親コンポーネントに入力確定内容を即座に引き渡す
+        if (onSuccess) {
+          onSuccess(content, previewUrl, isVideo, privacyLevel);
+        }
+
+        // 引き渡しを終えてからフォームをリセット
+        handleReset();
+        
+        // 裏で静かにサーバーの最新状態と同期させる
+        router.refresh();
       }
 
     } catch (error) {
@@ -130,14 +132,12 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
         </div>
       )}
 
-      {/* 💡 修正箇所1: フォーム全体の背景色をダークモードに対応（dark:bg-zinc-900、境界線も調整） */}
       <form
         onSubmit={handleSubmit}
         className={`${isReply ? "bg-gray-50/50 dark:bg-zinc-900/40" : "bg-white dark:bg-zinc-900"} p-4 rounded-[2rem] shadow-sm border transition-all duration-200 ${
           toxicInfo.isToxic ? "border-amber-300 ring-2 ring-amber-100 dark:ring-amber-950/20" : "border-gray-100 dark:border-zinc-800/80"
         } ${isPending ? "opacity-70 pointer-events-none" : ""}`}
       >
-        {/* 💡 修正箇所2: テキストエリア内の文字色（dark:text-zinc-100）と入力エリア背景色（dark:bg-zinc-950/50）を調整 */}
         <textarea
           name="content"
           value={content}
@@ -169,7 +169,6 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
 
         <div className="flex flex-row justify-between items-center gap-3 mt-4">
           <div className="flex items-center gap-3">
-            {/* 💡 修正箇所3: 画像アップロードボタンの背景・境界線をダーク対応 */}
             <label className="cursor-pointer p-2.5 bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 rounded-xl transition-all flex items-center shadow-sm border border-gray-100 dark:border-zinc-700/60">
               <ImageIcon size={18} strokeWidth={2} style={{ color: GOLD_COLOR }} />
               <input
@@ -190,7 +189,6 @@ export default function PostForm({ parentId, onSuccess }: PostFormProps) {
 
             {!isReply && (
               <div className="flex items-center gap-2">
-                {/* 💡 修正箇所4: 公開範囲トグルの背景スイッチをダーク対応（dark:bg-zinc-800） */}
                 <div
                   onClick={() => setPrivacyLevel((prev) => (prev === "public" ? "friends" : "public"))}
                   className="relative w-14 h-8 bg-gray-100 dark:bg-zinc-800 rounded-full p-1 cursor-pointer select-none border border-gray-200/50 dark:border-zinc-700/50 shadow-inner transition-colors overflow-hidden"

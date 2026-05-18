@@ -11,9 +11,11 @@ const GOLD_COLOR = "#B8860B";
 
 interface BottomNavProps {
   currentUserId: string; 
+  // 💡 修正点1: 親（FilteredTimeline または Index）から降りてくる0秒反映ロジックを受け取る
+  onPostSuccess?: (content: string, mediaUrl: string | null, isVideo: boolean, privacyLevel: "public" | "friends") => void;
 }
 
-export function BottomNav({ currentUserId }: BottomNavProps) {
+export function BottomNav({ currentUserId, onPostSuccess }: BottomNavProps) {
   const pathname = usePathname();
   const [isPostOpen, setIsPostOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0); 
@@ -78,7 +80,6 @@ export function BottomNav({ currentUserId }: BottomNavProps) {
     <>
       {/* 1. ボトムナビゲーションバー本体 */}
       <div className="fixed bottom-5 left-0 right-0 z-50 px-5">
-        {/* 💡 修正箇所1: dark:bg-zinc-900/95 と境界線・影をダークモードに対応 */}
         <div className="max-w-md mx-auto flex justify-around items-center h-16 bg-[#F9F6E5]/95 dark:bg-zinc-900/95 backdrop-blur-md border border-[#B8860B]/10 dark:border-zinc-800/80 shadow-[0_8px_32px_rgba(184,134,11,0.12)] dark:shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-[2rem] transition-colors duration-200">
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -123,7 +124,6 @@ export function BottomNav({ currentUserId }: BottomNavProps) {
                   fill={isActive ? GOLD_COLOR : 'none'}
                 />
 
-                {/* 💡 修正箇所2: 通知バッジのリング（白フチ）をダークモード時は暗い色（dark:ring-zinc-900）へ連動 */}
                 {item.href === '/notifications' && unreadCount > 0 && (
                   <span className="absolute top-2.5 right-6 bg-rose-500 text-white text-[9px] font-black h-4 min-w-4 px-1 flex items-center justify-center rounded-full ring-2 ring-white dark:ring-zinc-900 animate-pulse">
                     {unreadCount}
@@ -144,7 +144,6 @@ export function BottomNav({ currentUserId }: BottomNavProps) {
             onClick={() => setIsPostOpen(false)} 
           />
           
-          {/* 💡 修正箇所3: ポップアップのコンテナ背景色をダーク対応（dark:bg-zinc-900） */}
           <div 
             className="relative w-full max-w-md bg-white dark:bg-zinc-900 rounded-t-[2rem] p-6 shadow-2xl pb-safe max-h-[85vh] overflow-y-auto transform transition-transform duration-300 border-t border-transparent dark:border-zinc-800/60"
             onClick={(e) => e.stopPropagation()} 
@@ -154,7 +153,6 @@ export function BottomNav({ currentUserId }: BottomNavProps) {
               <span className="text-[11px] font-black uppercase tracking-widest text-gray-400 dark:text-zinc-500">
                 Create New Post
               </span>
-              {/* 右上の閉じる(✕)ボタン */}
               <button 
                 onClick={() => setIsPostOpen(false)}
                 className="p-1 rounded-full bg-gray-50 dark:bg-zinc-800 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
@@ -164,7 +162,15 @@ export function BottomNav({ currentUserId }: BottomNavProps) {
             </div>
 
             {/* ポストフォーム */}
-            <PostForm onSuccess={() => setIsPostOpen(false)} />
+            {/* 💡 修正点2: フォーム送信成功時、閉じると同時に受け取った実データを親へ引き渡す */}
+            <PostForm 
+              onSuccess={(content, mediaUrl, isVideo, privacyLevel) => {
+                setIsPostOpen(false); // ポップアップを閉じる
+                if (onPostSuccess) {
+                  onPostSuccess(content, mediaUrl, isVideo, privacyLevel); // 0秒反映ロジックをキック
+                }
+              }} 
+            />
           </div>
 
         </div>
