@@ -23,6 +23,7 @@ interface FilteredTimelineProps {
   mainPosts: any[];
   replies: any[];
   user: any;
+  profile?: any; // 💡 ログイン中のユーザープロフィールを親から受け取るために追加
   friendIds: string[];
   onSuccess?: (...args: any[]) => void; 
   viewModeProp?: 'all' | 'friends'; 
@@ -32,12 +33,13 @@ export default function FilteredTimeline({
   mainPosts = [], 
   replies = [], 
   user, 
+  profile, // 💡 Propsを展開
   friendIds = [], 
   onSuccess, 
   viewModeProp = 'all'
 }: FilteredTimelineProps) {
-  // 💡 解決策：無限スクロールで「追加読み込みした投稿」だけをローカルStateで管理する
-  const [extraPosts, setExtraPosts] = useState<any[]>([]);
+  // 💡 巻き戻された元のローカルState管理ロジック
+  const [timelinePosts, setTimelinePosts] = useState<any[]>(Array.isArray(mainPosts) ? mainPosts : []);
   const [timelineReplies, setTimelineReplies] = useState<any[]>(Array.isArray(replies) ? replies : []);
   
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null);
@@ -52,33 +54,18 @@ export default function FilteredTimeline({
 
   const router = useRouter();
 
-  // 💡 親から届く本物の mainPosts と、スクロールで追加した extraPosts を合流させる（重複はIDで自動除去）
-  const safeMainPosts = Array.isArray(mainPosts) ? mainPosts : [];
-  const mergedPosts = React.useMemo(() => {
-    const seenIds = new Set(safeMainPosts.filter(Boolean).map(p => p.id));
-    const filteredExtra = extraPosts.filter(p => p && !seenIds.has(p.id));
-    return [...safeMainPosts, ...filteredExtra];
-  }, [safeMainPosts, extraPosts]);
-
-  // 親から届いた初期件数に基づいて、まだ次があるかを判定
+  // 親からのデータを同期する安全な副作用
   useEffect(() => {
-    if (safeMainPosts.length < 20) {
-      setHasMore(false);
-    } else {
-      setHasMore(true);
-    }
-  }, [safeMainPosts.length]);
-
-  // ページ切り替え（Public/Friends）が発生したら追加分のログをリセット
-  useEffect(() => {
-    setExtraPosts([]);
-  }, [viewModeProp]);
+    const safePosts = Array.isArray(mainPosts) ? mainPosts : [];
+    setTimelinePosts([...safePosts]); 
+    setHasMore(safePosts.length >= 20);
+  }, [mainPosts]); 
 
   useEffect(() => {
     setTimelineReplies(Array.isArray(replies) ? replies : []);
   }, [replies]);
 
-  // リアルタイム監視（削除検知のみ残し、INSERT時はTanStack Queryのinvalidate等に任せるか、必要に応じて動作）
+  // リアルタイム監視（元のロジック通り）
   useEffect(() => {
     const channel = supabase
       .channel('timeline-realtime-changes')
@@ -91,7 +78,7 @@ export default function FilteredTimeline({
         },
         (payload) => {
           if (payload.eventType === 'DELETE') {
-            setExtraPosts((current) => current.filter((p) => p && p.id !== payload.old.id));
+            setTimelinePosts((current) => current.filter((p) => p && p.id !== payload.old.id));
             router.refresh();
           }
         }
@@ -121,21 +108,21 @@ export default function FilteredTimeline({
     }
 
     return () => observer.disconnect();
-  }, [mergedPosts, hasMore, isLoadingMore]);
+  }, [timelinePosts, hasMore, isLoadingMore]);
 
   const loadNextPosts = async () => {
     if (isLoadingMore || !hasMore) return;
     setIsLoadingMore(true);
 
     try {
-      const currentOffset = mergedPosts.length;
+      const currentOffset = timelinePosts.length;
       const nextPosts = await fetchMorePosts(currentOffset, 20);
 
       if (!nextPosts || nextPosts.length === 0) {
         setHasMore(false);
       } else {
-        setExtraPosts((current) => {
-          const currentIds = new Set(mergedPosts.filter(Boolean).map((p) => p.id));
+        setTimelinePosts((current) => {
+          const currentIds = new Set(current.filter(Boolean).map((p) => p.id));
           const filteredNext = nextPosts.filter((p: any) => p && !currentIds.has(p.id));
           
           if (filteredNext.length === 0) {
@@ -154,7 +141,7 @@ export default function FilteredTimeline({
   };
 
   const safeFriendIds = Array.isArray(friendIds) ? friendIds : [];
-  const visiblePosts = mergedPosts.filter((post: any) => {
+  const visiblePosts = timelinePosts.filter((post: any) => {
     if (!post || !post.id) return false;
     const hasPermission = 
       post.privacy_level === 'public' || 
@@ -176,7 +163,7 @@ export default function FilteredTimeline({
       await deletePost(formData);
       toast.success('削除しました');
       setTimelineReplies((current) => current.filter((r) => r && r.id !== postId));
-      setExtraPosts((current) => current.filter((p) => p && p.id !== postId));
+      setTimelinePosts((current) => current.filter((p) => p && p.id !== postId));
       router.refresh();
     } catch (error) {
       toast.error('削除に失敗しました');
@@ -217,6 +204,7 @@ export default function FilteredTimeline({
     }
   };
 
+  // 💡 修正点：親から渡された正確な `profile`（profilesテーブル）から自分の情報を適用
   const handleReplySuccess = (
     postId: number, 
     targetReply: { id: number; name: string } | null,
@@ -234,10 +222,10 @@ export default function FilteredTimeline({
       created_at: new Date().toISOString(),
       replyToUser: targetReply ? targetReply.name : null,
       authorProfile: {
-        full_name: user?.user_metadata?.full_name || user?.email?.split('@')[0] || "あなた",
-        avatar_url: user?.user_metadata?.avatar_url || defaultAvatar,
-        total_awesome: user?.user_metadata?.total_awesome || 0,
-        total_hug: user?.user_metadata?.total_hug || 0
+        full_name: profile?.full_name || user?.user_metadata?.full_name || user?.email?.split('@')[0] || "あなた",
+        avatar_url: profile?.avatar_url || user?.user_metadata?.avatar_url || defaultAvatar,
+        total_awesome: profile?.total_awesome || 0,
+        total_hug: profile?.total_hug || 0
       }
     };
 
@@ -259,11 +247,11 @@ export default function FilteredTimeline({
             const postReplies = (timelineReplies || []).filter((r: any) => r && r.parent_id === post.id);
             const isPostReported = !!reportedPostIds[post.id];
 
-            const profile = post.authorProfile || {};
-            const totalAwesome = profile.total_awesome ?? profile.totalAwesomeCount ?? profile.totalAwesome ?? 0;
-            const totalHug = profile.total_hug ?? profile.totalHugCount ?? profile.totalHug ?? 0;
-            const fullName = profile.full_name || "ゲストユーザー";
-            const avatarUrl = profile.avatar_url || defaultAvatar;
+            const postProfile = post.authorProfile || {};
+            const totalAwesome = postProfile.total_awesome ?? postProfile.totalAwesomeCount ?? postProfile.totalAwesome ?? 0;
+            const totalHug = postProfile.total_hug ?? postProfile.totalHugCount ?? postProfile.totalHug ?? 0;
+            const fullName = postProfile.full_name || "ゲストユーザー";
+            const avatarUrl = postProfile.avatar_url || defaultAvatar;
 
             const calculatedLevel = Math.min(999, Math.max(1, Math.floor(Math.sqrt(totalAwesome)) + 1));
 
